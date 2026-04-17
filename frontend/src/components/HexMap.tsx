@@ -8,6 +8,7 @@ import type { Group, Mesh, MeshStandardMaterial, Object3D, Texture } from "three
 import type { HexTile } from "../types";
 import { BIOME_ASSET_KEY, MAP_3D_ASSETS, type Map3dAssetConfig, type Map3dAssetKey } from "../config/map3dAssets";
 import { generateTilePropPlan, type PropInstancePlan } from "../config/map3dProps";
+import { colorFromAddress } from "../utlis/helpers/converters";
 
 type Props = {
   hexes: HexTile[];
@@ -24,18 +25,11 @@ const biomeStyle: Record<string, { base: string; edge: string; glow: string; res
   Desert: { base: "#e49b55", edge: "#ffad69", glow: "#ffd8b0", resource: "energy" }
 };
 
-const ownerPalette = ["#56f0ff", "#ffd369", "#5bff9d", "#ff7d7d", "#9c7dff", "#ffad69"];
 const HEX_RADIUS = 1.9;
 const PROP_TARGET_FOOTPRINT = 0.95;
 const PROP_DEBUG_ENABLED = ["1", "true", "yes", "on"].includes(
   String(import.meta.env.VITE_MAP3D_PROP_DEBUG || "").toLowerCase()
 );
-
-const colorFromAddress = (address?: string | null) => {
-  if (!address) return "#f3f7ff";
-  const hash = address.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return ownerPalette[hash % ownerPalette.length];
-};
 
 const tilePosition = (q: number, r: number) => {
   const x = HEX_RADIUS * Math.sqrt(3) * (q + r / 2);
@@ -389,6 +383,7 @@ function HexTileMesh({
   propTexturesByUrl: Record<string, TextureLoadState>;
   debugProps: boolean;
   onHover: (hexId?: string) => void;
+  onSelect: (hexId: string) => void;
   onOpenContext: (hexId: string, clientX: number, clientY: number) => void;
 }) {
   const groupRef = useRef<Group>(null);
@@ -517,8 +512,7 @@ function HexTileMesh({
         }}
         onClick={(event) => {
           event.stopPropagation();
-          const native = event.nativeEvent as MouseEvent;
-          onOpenContext(hex.id, native.clientX, native.clientY);
+          onSelect(hex.id);
         }}
         onContextMenu={(event) => {
           event.stopPropagation();
@@ -770,6 +764,7 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
                 propTexturesByUrl={propTexturesByUrl}
                 debugProps={debugProps}
                 onHover={setHoveredHex}
+                onSelect={onHexClick}
                 onOpenContext={openContextMenu}
               />
             );

@@ -106,8 +106,8 @@ export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, earthquake
                       r={hex.r}
                       s={-hex.q - hex.r}
                       onClick={(event) => {
-                        const native = event as unknown as MouseEvent;
-                        openContextMenu(hex.id, native.clientX, native.clientY);
+                        onHexClick(hex.id);
+                        setContextMenu(null);
                       }}
                       onContextMenu={(event) => {
                         event.preventDefault();
