@@ -8,7 +8,7 @@ import type { Group, Mesh, MeshStandardMaterial, Object3D, Texture } from "three
 import type { HexTile } from "../types";
 import { BIOME_ASSET_KEY, MAP_3D_ASSETS, type Map3dAssetConfig, type Map3dAssetKey } from "../config/map3dAssets";
 import { generateTilePropPlan, type PropInstancePlan } from "../config/map3dProps";
-import { colorFromAddress } from "../utlis/helpers/converters";
+import { colorFromAddress } from "../utils/helpers/converters";
 
 type Props = {
   hexes: HexTile[];

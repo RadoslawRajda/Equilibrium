@@ -39,7 +39,7 @@ import {
   FALLBACK_LOBBY_ZERO_ROUND_SECONDS
 } from "./lib/chainGameDefaults";
 import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActivityFeed";
-import { colorFromAddress } from "./utlis/helpers/converters";
+import { colorFromAddress } from "./utils/helpers/converters";
 
 type ContractMeta = {
   contracts: {
