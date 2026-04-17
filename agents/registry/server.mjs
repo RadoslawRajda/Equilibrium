@@ -8,7 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/** @type {Map<string, { address: string, name: string, registeredAt: string, personality?: string }>} */
+/** @type {Map<string, { address: string, name: string, registeredAt: string, personality?: string, onChainAgentAddress?: string }>} */
 const agents = new Map();
 
 /** @type {Map<string, { lobbyId: string, targetAddress: string, hostAddress: string, createdAt: string }[]>} key = targetAddress lower */
@@ -23,7 +23,7 @@ app.get("/agents", (_req, res) => {
 });
 
 app.post("/agents/register", (req, res) => {
-  const { address, name, personality } = req.body ?? {};
+  const { address, name, personality, onChainAgentAddress } = req.body ?? {};
   if (!address || typeof address !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return res.status(400).json({ error: "Invalid address" });
   }
@@ -33,7 +33,10 @@ app.post("/agents/register", (req, res) => {
     address,
     name: n,
     registeredAt: new Date().toISOString(),
-    ...(personality ? { personality: String(personality).slice(0, 2000) } : {})
+    ...(personality ? { personality: String(personality).slice(0, 2000) } : {}),
+    ...(typeof onChainAgentAddress === "string" && /^0x[a-fA-F0-9]{40}$/.test(onChainAgentAddress)
+      ? { onChainAgentAddress }
+      : {})
   };
   agents.set(key, row);
   res.json(row);
@@ -52,10 +55,22 @@ app.post("/lobbies/:lobbyId/invite", (req, res) => {
     hostAddress: host,
     createdAt: new Date().toISOString()
   };
-  const key = targetAddress.toLowerCase();
-  const list = invitesByAgent.get(key) ?? [];
+  /** If caller used the on-chain ERC-8004 identity contract, store under the controller wallet (same bucket the player agent polls). */
+  let storageKey = targetAddress.toLowerCase();
+  for (const [, row] of agents) {
+    const onChain = row.onChainAgentAddress;
+    if (
+      typeof onChain === "string" &&
+      /^0x[a-fA-F0-9]{40}$/.test(onChain) &&
+      onChain.toLowerCase() === storageKey
+    ) {
+      storageKey = row.address.toLowerCase();
+      break;
+    }
+  }
+  const list = invitesByAgent.get(storageKey) ?? [];
   list.push(invite);
-  invitesByAgent.set(key, list);
+  invitesByAgent.set(storageKey, list);
   res.json({ ok: true, invite });
 });
 

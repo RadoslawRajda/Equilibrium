@@ -84,6 +84,8 @@ export type GameSnapshot = {
     /** From `GameCore.previewCollectionResourceYield` — biome selects which basic resource. */
     collectResourceYieldLevel1: number;
     collectResourceYieldLevel2: number;
+    /** `GameCore.getBasicResourceMax` — food/wood/stone/ore cannot exceed this on-chain. */
+    basicResourceMax: number;
     /** When set, posting `createTrade` with these pouches (open taker) is a strong rebalance move. */
     rebalanceTradeDraft?: {
       surplus: BasicResourceKey;
@@ -287,6 +289,17 @@ export async function buildSnapshot(
     })) as bigint
   );
 
+  const basicResourceMax = Number(
+    ((await client
+      .readContract({
+        address: gameCore,
+        abi: gameCoreAbi,
+        functionName: "getBasicResourceMax",
+        args: []
+      })
+      .catch(() => 20n)) as bigint)
+  );
+
   const [ceL1, ceL2, cyL1, cyL2] = await Promise.all([
     client.readContract({
       address: gameCore,
@@ -365,7 +378,8 @@ export async function buildSnapshot(
     collectEnergyLevel1,
     collectEnergyLevel2,
     collectResourceYieldLevel1,
-    collectResourceYieldLevel2
+    collectResourceYieldLevel2,
+    basicResourceMax
   };
 
   const zeroAddr = "0x0000000000000000000000000000000000000000";

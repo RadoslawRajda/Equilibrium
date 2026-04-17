@@ -69,11 +69,11 @@ describe("Multiplayer GameCore", function () {
     for (const addr of [host.address, player1.address]) {
       expect(await gameCore.isPlayerAlive(1, addr)).to.equal(true);
       const res = await gameCore.getPlayerResources(1, addr);
-      expect(res[0]).to.equal(18n);
-      expect(res[1]).to.equal(18n);
-      expect(res[2]).to.equal(18n);
-      expect(res[3]).to.equal(18n);
-      expect(res[4]).to.equal(36n);
+      expect(res[0]).to.equal(2n);
+      expect(res[1]).to.equal(2n);
+      expect(res[2]).to.equal(2n);
+      expect(res[3]).to.equal(2n);
+      expect(res[4]).to.equal(100n);
     }
   });
 

@@ -38,6 +38,8 @@ export type ActionCosts = {
   collectResourceYieldLevel1: number;
   /** `GameCore.previewCollectionResourceYield(2)` */
   collectResourceYieldLevel2: number;
+  /** `GameCore.getBasicResourceMax` — hard cap for food/wood/stone/ore. */
+  basicResourceMax: number;
 };
 
 export const short = (address?: string) => (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "?");

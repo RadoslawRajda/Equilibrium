@@ -15,6 +15,7 @@ import {
   type ActionCosts
 } from "./gameUtils";
 import {
+  FALLBACK_BASIC_RESOURCE_MAX,
   FALLBACK_ENERGY_REGEN_PER_ROUND,
   FALLBACK_MAX_ENERGY
 } from "./chainGameDefaults";
@@ -381,7 +382,7 @@ export class LobbyRepository {
         playerResources = pr;
         viewerCraftedGoods = vcg as bigint;
       }
-      const [buildCostRaw, upgradeCostRaw, discoverCostRaw, craftCostRaw, tradingEnergyCostRaw, energyConfigRaw, bankBulkMaxRaw, collectE1Raw, collectE2Raw, collectY1Raw, collectY2Raw] =
+      const [buildCostRaw, upgradeCostRaw, discoverCostRaw, craftCostRaw, tradingEnergyCostRaw, energyConfigRaw, basicMaxRaw, bankBulkMaxRaw, collectE1Raw, collectE2Raw, collectY1Raw, collectY2Raw] =
         await Promise.all([
           publicClient.readContract({
             address: gameCoreAddress,
@@ -415,6 +416,11 @@ export class LobbyRepository {
             address: gameCoreAddress,
             abi: gameCoreAbi,
             functionName: "getEnergyConfig"
+          } as any).catch(() => null),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getBasicResourceMax"
           } as any).catch(() => null),
           publicClient.readContract({
             address: gameCoreAddress,
@@ -480,6 +486,7 @@ export class LobbyRepository {
         1,
         FALLBACK_ENERGY_REGEN_PER_ROUND
       );
+      const basicResourceMax = nCollectEnergy(basicMaxRaw, FALLBACK_BASIC_RESOURCE_MAX);
       const actionCosts: ActionCosts | null =
         buildCostRaw && upgradeCostRaw
           ? {
@@ -491,9 +498,10 @@ export class LobbyRepository {
               energyMax,
               energyRegenPerRound,
               collectEnergyLevel1: nCollectEnergy(collectE1Raw, 10),
-              collectEnergyLevel2: nCollectEnergy(collectE2Raw, 20),
-              collectResourceYieldLevel1: nCollectEnergy(collectY1Raw, 30),
-              collectResourceYieldLevel2: nCollectEnergy(collectY2Raw, 45)
+              collectEnergyLevel2: nCollectEnergy(collectE2Raw, 10),
+              collectResourceYieldLevel1: nCollectEnergy(collectY1Raw, 1),
+              collectResourceYieldLevel2: nCollectEnergy(collectY2Raw, 2),
+              basicResourceMax
             }
           : null;
 
