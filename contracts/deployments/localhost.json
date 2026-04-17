@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-17T19:31:11.251Z",
+  "deployedAt": "2026-04-17T21:48:57.884Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -2454,6 +2454,25 @@
             {
               "indexed": true,
               "internalType": "address",
+              "name": "previousRegistry",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newRegistry",
+              "type": "address"
+            }
+          ],
+          "name": "AgentStatsRegistryUpdated",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
               "name": "previousEntryPoint",
               "type": "address"
             },
@@ -2503,6 +2522,50 @@
             }
           ],
           "name": "GameStarted",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            }
+          ],
+          "name": "LobbyAgentInviteCleared",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "host",
+              "type": "address"
+            }
+          ],
+          "name": "LobbyAgentInvited",
           "type": "event"
         },
         {
@@ -2579,6 +2642,31 @@
             }
           ],
           "name": "OwnershipTransferred",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "kicked",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "creditedWei",
+              "type": "uint256"
+            }
+          ],
+          "name": "PlayerKickedOpenLobby",
           "type": "event"
         },
         {
@@ -2867,6 +2955,19 @@
           "type": "function"
         },
         {
+          "inputs": [],
+          "name": "agentStatsRegistry",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
           "inputs": [
             {
               "internalType": "uint256",
@@ -3116,6 +3217,30 @@
           "type": "function"
         },
         {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            }
+          ],
+          "name": "getLobbyAgentInvite",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
           "inputs": [],
           "name": "getLobbyCount",
           "outputs": [
@@ -3196,6 +3321,42 @@
               "internalType": "uint256",
               "name": "_lobbyId",
               "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "kicked",
+              "type": "address"
+            }
+          ],
+          "name": "hostKickOpenLobbyPlayer",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            }
+          ],
+          "name": "inviteAgentToLobby",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "_lobbyId",
+              "type": "uint256"
             }
           ],
           "name": "leaveOpenLobby",
@@ -3247,6 +3408,30 @@
               "internalType": "uint256",
               "name": "withdrawnAmount",
               "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "lobbyAgentInvite",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
             }
           ],
           "stateMutability": "view",
@@ -3407,6 +3592,19 @@
             }
           ],
           "name": "setActorAuthority",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "newRegistry",
+              "type": "address"
+            }
+          ],
+          "name": "setAgentStatsRegistry",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -5687,8 +5885,528 @@
         }
       ]
     },
-    "MockERC8004Agent": {
+    "ERC8004PlayerAgentRegistry": {
       "address": "0xdDA6327139485221633A1FcD65f4aC932E60A2e1",
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableInvalidOwner",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "account",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableUnauthorizedAccount",
+          "type": "error"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "agent",
+              "type": "address"
+            }
+          ],
+          "name": "AgentDeactivated",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "agent",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "bool",
+              "name": "won",
+              "type": "bool"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "gamesPlayed",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "gamesWon",
+              "type": "uint256"
+            }
+          ],
+          "name": "AgentGameRecorded",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "agent",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "metadataURI",
+              "type": "string"
+            }
+          ],
+          "name": "AgentRegistered",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "previousOwner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnershipTransferStarted",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "previousOwner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnershipTransferred",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "previousUpdater",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newUpdater",
+              "type": "address"
+            }
+          ],
+          "name": "StatsUpdaterUpdated",
+          "type": "event"
+        },
+        {
+          "inputs": [],
+          "name": "acceptOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "agentStats",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "gamesPlayed",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "gamesWon",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "lastLobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "registeredAt",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bool",
+              "name": "active",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "agentToController",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "controllerToAgent",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "metadataURI",
+              "type": "string"
+            }
+          ],
+          "name": "createAndRegisterAgent",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "agent",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "deactivateMyAgent",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "index",
+              "type": "uint256"
+            }
+          ],
+          "name": "getAgentAt",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "controller",
+              "type": "address"
+            }
+          ],
+          "name": "getAgentByController",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getAgentCount",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "offset",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "max",
+              "type": "uint256"
+            }
+          ],
+          "name": "listAgents",
+          "outputs": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "agent",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "controller",
+                  "type": "address"
+                },
+                {
+                  "internalType": "string",
+                  "name": "name",
+                  "type": "string"
+                }
+              ],
+              "internalType": "struct ERC8004PlayerAgentRegistry.ListedAgent[]",
+              "name": "",
+              "type": "tuple[]"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "name": "lobbyResultRecorded",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "owner",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "pendingOwner",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address[]",
+              "name": "players",
+              "type": "address[]"
+            },
+            {
+              "internalType": "address",
+              "name": "winner",
+              "type": "address"
+            }
+          ],
+          "name": "recordLobbyResult",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "agent",
+              "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "metadataURI",
+              "type": "string"
+            }
+          ],
+          "name": "registerExistingAgent",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "renounceOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "newUpdater",
+              "type": "address"
+            }
+          ],
+          "name": "setStatsUpdater",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "statsUpdater",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "transferOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        }
+      ]
+    },
+    "MockERC8004Agent": {
+      "address": "0xeec918d74c746167564401103096D45BbD494B74",
       "abi": [
         {
           "inputs": [],
@@ -5922,7 +6640,7 @@
       ]
     },
     "ERC8004AIGameMasterAdapter": {
-      "address": "0xeec918d74c746167564401103096D45BbD494B74",
+      "address": "0x0d8cc4b8d15D4c3eF1d70af0071376fb26B5669b",
       "abi": [
         {
           "inputs": [
@@ -6211,7 +6929,7 @@
       ]
     },
     "GameCore": {
-      "address": "0x0d8cc4b8d15D4c3eF1d70af0071376fb26B5669b",
+      "address": "0xEcFcaB0A285d3380E488A39B4BB21e777f8A4EaC",
       "abi": [
         {
           "inputs": [
@@ -7304,6 +8022,19 @@
             {
               "internalType": "uint256",
               "name": "receiveAmount",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getBasicResourceMax",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
               "type": "uint256"
             }
           ],

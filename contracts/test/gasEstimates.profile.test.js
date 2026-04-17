@@ -78,6 +78,16 @@ describe("Gas profile (estimateGas) — pessimistic planning", function () {
     const gPick = await gameCore.connect(host).pickStartingHex.estimateGas(1n, center, 0, 0);
     await gameCore.connect(host).pickStartingHex(1n, center, 0, 0);
 
+    const z = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
+    await gameCore.connect(host).setLobbyGameMaster(1n, host.address);
+    await gameCore.connect(host).gameMasterAdjustResources(
+      1n,
+      host.address,
+      { food: 2n, wood: 0n, stone: 0n, ore: 0n, energy: 0n },
+      z,
+      "gas test bank food"
+    );
+
     const gProp = await gameCore.connect(host).createProposal.estimateGas(
       1n,
       "End round early",

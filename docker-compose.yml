@@ -11,8 +11,6 @@ x-player-runtime: &player-runtime
       condition: service_started
     hardhat:
       condition: service_started
-    agent-registry:
-      condition: service_started
     player-agent-image:
       condition: service_completed_successfully
 
@@ -92,11 +90,6 @@ services:
       - ganache
       - hardhat
 
-  agent-registry:
-    build: ./agents/registry
-    ports:
-      - "4050:4050"
-
   player-agent-image:
     image: cryptocatan/player-agent:local
     build: ./agents/player
@@ -107,7 +100,6 @@ services:
     <<: *player-runtime
     environment:
       RPC_URL: http://ganache:8545
-      REGISTRY_URL: http://agent-registry:4050
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
       AGENT_ACCOUNT_INDEX: "10"
@@ -121,7 +113,6 @@ services:
     <<: *player-runtime
     environment:
       RPC_URL: http://ganache:8545
-      REGISTRY_URL: http://agent-registry:4050
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
       AGENT_ACCOUNT_INDEX: "11"
@@ -135,7 +126,6 @@ services:
     <<: *player-runtime
     environment:
       RPC_URL: http://ganache:8545
-      REGISTRY_URL: http://agent-registry:4050
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
       AGENT_ACCOUNT_INDEX: "12"
@@ -149,7 +139,6 @@ services:
     <<: *player-runtime
     environment:
       RPC_URL: http://ganache:8545
-      REGISTRY_URL: http://agent-registry:4050
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
       AGENT_ACCOUNT_INDEX: "13"
@@ -170,13 +159,13 @@ services:
       - VITE_RPC_URL=http://localhost:8545
       - VITE_BUNDLER_URL=/bundler
       - VITE_WALLETCONNECT_PROJECT_ID=demo-project-id
-      - VITE_AGENT_REGISTRY_URL=http://localhost:4050
     ports:
       - "3000:3000"
     command: >
       sh -c "
       apk add --no-cache python3 make g++ linux-headers &&
       npm install --legacy-peer-deps &&
+      node scripts/sync-abi.mjs &&
       EP=$$(node -e \"const fs=require('fs');const p='/contracts/deployments/localhost.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));process.stdout.write(j?.contracts?.EntryPoint?.address || '')\") &&
       if [ -n \"$$EP\" ]; then export VITE_ENTRYPOINT_ADDRESS=$$EP; fi &&
       npm run dev -- --host 0.0.0.0 --port 3000"

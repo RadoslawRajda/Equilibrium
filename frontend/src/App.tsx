@@ -73,6 +73,10 @@ type ContractMeta = {
       address: `0x${string}`;
       abi: any[];
     };
+    ERC8004PlayerAgentRegistry?: {
+      address: `0x${string}`;
+      abi: any[];
+    };
     AIGameMaster: {
       address: `0x${string}`;
       abi: any[];
@@ -138,6 +142,34 @@ function tradeResourcesTuple(value: Record<string, unknown> | null | undefined):
   };
 }
 
+/** `listAgents` return: viem often decodes Solidity structs as `[agent, controller, name]` tuples. */
+function parseListAgentsRows(raw: unknown): { agent: string; controller: string; name: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { agent: string; controller: string; name: string }[] = [];
+  const asAddr = (v: unknown) => (typeof v === "string" ? v : String(v ?? ""));
+  for (const row of raw) {
+    if (Array.isArray(row) && row.length >= 3) {
+      const agent = asAddr(row[0]);
+      const controller = asAddr(row[1]);
+      const name = asAddr(row[2]);
+      if (/^0x[a-fA-F0-9]{40}$/.test(controller)) {
+        out.push({ agent, controller, name });
+      }
+      continue;
+    }
+    if (row && typeof row === "object") {
+      const o = row as Record<string, unknown>;
+      const agent = asAddr(o.agent);
+      const controller = asAddr(o.controller);
+      const name = asAddr(o.name);
+      if (/^0x[a-fA-F0-9]{40}$/.test(controller)) {
+        out.push({ agent, controller, name });
+      }
+    }
+  }
+  return out;
+}
+
 function AppPage() {
   const navigate = useNavigate();
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -188,7 +220,10 @@ function AppPage() {
   const [ticketPriceWei, setTicketPriceWei] = useState<bigint | null>(null);
   /** LobbyManager.playerBalance(address) — call withdraw() to receive ETH. */
   const [lmWithdrawableWei, setLmWithdrawableWei] = useState<bigint | null>(null);
-  const [registryAgents, setRegistryAgents] = useState<{ address: string; name: string }[]>([]);
+  const [registryAgents, setRegistryAgents] = useState<
+    { address: string; name: string; identity?: string }[]
+  >([]);
+  const [chainRegistryAgentsError, setChainRegistryAgentsError] = useState<string | null>(null);
   const [spectatorTradeFeed, setSpectatorTradeFeed] = useState<TradeFeedItem[]>([]);
   const [spectatorTradeFeedLoading, setSpectatorTradeFeedLoading] = useState(false);
   const [tradeOffersModalOpen, setTradeOffersModalOpen] = useState(false);
@@ -221,6 +256,10 @@ function AppPage() {
   const lobbyManagerAbi = contracts?.contracts?.LobbyManager?.abi;
   const gameCoreAddress = contracts?.contracts?.GameCore?.address as `0x${string}` | undefined;
   const gameCoreAbi = contracts?.contracts?.GameCore?.abi;
+  const erc8004RegistryAddress = contracts?.contracts?.ERC8004PlayerAgentRegistry?.address as
+    | `0x${string}`
+    | undefined;
+  const erc8004RegistryAbi = contracts?.contracts?.ERC8004PlayerAgentRegistry?.abi;
   const rpcDisplay = import.meta.env.VITE_RPC_URL || "http://localhost:8545";
 
   useEffect(() => {
@@ -763,27 +802,51 @@ function AppPage() {
   );
 
   useEffect(() => {
-    const base = import.meta.env.VITE_AGENT_REGISTRY_URL as string | undefined;
-    if (!base) return;
+    if (!publicClient) {
+      setRegistryAgents([]);
+      setChainRegistryAgentsError(null);
+      return;
+    }
+    if (!erc8004RegistryAddress || !erc8004RegistryAbi) {
+      setRegistryAgents([]);
+      setChainRegistryAgentsError(
+        "ERC8004PlayerAgentRegistry is missing from deployments (run contract deploy and sync frontend ABI)."
+      );
+      return;
+    }
     let cancelled = false;
-    void fetch(`${base.replace(/\/$/, "")}/agents`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: unknown) => {
-        if (cancelled || !Array.isArray(data)) return;
+    const load = async () => {
+      try {
+        const raw = await publicClient.readContract({
+          address: erc8004RegistryAddress,
+          abi: erc8004RegistryAbi,
+          functionName: "listAgents",
+          args: [0n, 64n]
+        } as any);
+        if (cancelled) return;
+        const parsed = parseListAgentsRows(raw);
+        setChainRegistryAgentsError(null);
         setRegistryAgents(
-          data
-            .map((x: { address?: string; name?: string }) => ({
-              address: String(x.address ?? ""),
-              name: String(x.name ?? "Agent")
-            }))
-            .filter((x) => x.address.startsWith("0x"))
+          parsed.map((r) => ({
+            address: r.controller,
+            name: r.name.trim() ? r.name : "Agent",
+            identity: r.agent.startsWith("0x") ? r.agent : undefined
+          }))
         );
-      })
-      .catch(() => {});
+      } catch (e) {
+        if (!cancelled) {
+          setRegistryAgents([]);
+          setChainRegistryAgentsError(e instanceof Error ? e.message : String(e));
+        }
+      }
+    };
+    void load();
+    const interval = setInterval(() => void load(), 4000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
-  }, []);
+  }, [publicClient, erc8004RegistryAddress, erc8004RegistryAbi]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1171,20 +1234,68 @@ function AppPage() {
     }
   };
 
-  const onInviteAgent = async (agentAddress: string) => {
-    const base = import.meta.env.VITE_AGENT_REGISTRY_URL as string | undefined;
-    if (!base || !activeLobby || !address) return;
+  const onKickHostOpenLobby = async (kickedAddress: string) => {
+    if (!activeLobby || !address || !walletClient || !publicClient || !lobbyManagerAddress || !lobbyManagerAbi) return;
+    if (kickedAddress.toLowerCase() === address.toLowerCase()) return;
+    setError("");
+    const pendingKey = `lobby:kick:${kickedAddress.toLowerCase()}`;
+    setPendingAction(pendingKey);
+    try {
+      let txHash: `0x${string}`;
+      if (useAaForLobbyFollowups) {
+        await ensureLobbySession(activeLobby.id, address);
+        txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: lobbyManagerAddress,
+          contractAbi: lobbyManagerAbi,
+          functionName: "hostKickOpenLobbyPlayer",
+          args: [BigInt(activeLobby.id), kickedAddress as `0x${string}`]
+        });
+      } else {
+        txHash = await walletClient.writeContract({
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "hostKickOpenLobbyPlayer",
+          account: address,
+          args: [BigInt(activeLobby.id), kickedAddress as `0x${string}`]
+        } as any);
+      }
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      await syncActiveLobbyFromChain(activeLobby.id);
+      await syncLobbiesFromChain();
+    } catch (e: any) {
+      setError(e.message);
+      console.error("hostKickOpenLobbyPlayer failed", e);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const onInviteAgent = async (controllerAddress: string) => {
+    if (!activeLobby || !address || !walletClient || !publicClient || !lobbyManagerAddress || !lobbyManagerAbi) return;
     setError("");
     setPendingAction("lobby:invite-agent");
     try {
-      const res = await fetch(`${base.replace(/\/$/, "")}/lobbies/${activeLobby.id}/invite`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetAddress: agentAddress, hostAddress: address })
-      });
-      if (!res.ok) {
-        throw new Error(`Invite failed: ${res.status}`);
+      let txHash: `0x${string}`;
+      if (useAaForLobbyFollowups) {
+        await ensureLobbySession(activeLobby.id, address);
+        txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: lobbyManagerAddress,
+          contractAbi: lobbyManagerAbi,
+          functionName: "inviteAgentToLobby",
+          args: [BigInt(activeLobby.id), controllerAddress as `0x${string}`]
+        });
+      } else {
+        txHash = await walletClient.writeContract({
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "inviteAgentToLobby",
+          account: address,
+          args: [BigInt(activeLobby.id), controllerAddress as `0x${string}`]
+        } as any);
       }
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -1790,8 +1901,14 @@ function AppPage() {
         actionError={error}
         agentAddresses={agentAddressSet}
         registeredAgents={registryAgents}
+        chainRegistryAgentsError={chainRegistryAgentsError}
+        inviteUses4337={useAaForLobbyFollowups}
         onInviteAgent={onInviteAgent}
         inviteAgentPending={pendingAction === "lobby:invite-agent"}
+        onKickPlayer={isLobbyHost ? (addr) => void onKickHostOpenLobby(addr) : undefined}
+        kickPlayerPendingAddress={
+          pendingAction?.startsWith("lobby:kick:") ? pendingAction.slice("lobby:kick:".length) : null
+        }
       />
     );
   }
