@@ -1,4 +1,4 @@
-import { BatteryCharging, Pickaxe, TreePine, UtensilsCrossed, Wheat } from "lucide-react";
+import { BatteryCharging, Gem, Pickaxe, TreePine, Wheat } from "lucide-react";
 
 import type { ResourceKey } from "../types";
 
@@ -6,7 +6,7 @@ const RES: { key: ResourceKey; Icon: typeof Wheat; accent: string }[] = [
   { key: "food", Icon: Wheat, accent: "#ffd369" },
   { key: "wood", Icon: TreePine, accent: "#5bff9d" },
   { key: "stone", Icon: Pickaxe, accent: "#96b7ff" },
-  { key: "ore", Icon: UtensilsCrossed, accent: "#ff9f6e" },
+  { key: "ore", Icon: Gem, accent: "#ff9f6e" },
   { key: "energy", Icon: BatteryCharging, accent: "#56f0ff" }
 ];
 

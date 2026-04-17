@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, BatteryCharging, Factory, Pickaxe, TreePine, UtensilsCrossed, Wheat } from "lucide-react";
+import { ArrowLeft, BatteryCharging, Factory, Gem, Pickaxe, TreePine, Wheat } from "lucide-react";
 import type { PlayerState } from "../types";
 
 type Props = {
@@ -32,7 +32,7 @@ export function ResourcePanel({ me, round, effects, onBack }: Props) {
         <Item icon={Wheat} label="Food" value={me?.resources.food ?? 0} accent="#ffd369" />
         <Item icon={TreePine} label="Wood" value={me?.resources.wood ?? 0} accent="#5bff9d" />
         <Item icon={Pickaxe} label="Stone" value={me?.resources.stone ?? 0} accent="#96b7ff" />
-        <Item icon={UtensilsCrossed} label="Ore" value={me?.resources.ore ?? 0} accent="#ff9f6e" />
+        <Item icon={Gem} label="Ore" value={me?.resources.ore ?? 0} accent="#ff9f6e" />
         <Item icon={BatteryCharging} label="Energy" value={me?.resources.energy ?? 0} accent="#56f0ff" />
         <Item icon={Factory} label="Alloy" value={me?.craftedGoods ?? 0} accent="#e0b0ff" />
       </div>

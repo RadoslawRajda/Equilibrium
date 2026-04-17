@@ -7,12 +7,12 @@ import {
   CheckCircle2,
   Factory,
   Flag,
+  Gem,
   Hammer,
   Leaf,
   Pickaxe,
   Sparkles,
   TreePine,
-  UtensilsCrossed,
   Vote,
   Wheat
 } from "lucide-react";
@@ -1496,7 +1496,7 @@ function AppPage() {
       food: Wheat,
       wood: TreePine,
       stone: Pickaxe,
-      ore: UtensilsCrossed,
+      ore: Gem,
       energy: BatteryCharging
     };
     const Icon = iconByKind[kind];

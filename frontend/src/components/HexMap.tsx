@@ -9,6 +9,7 @@ import type { HexTile } from "../types";
 import { BIOME_ASSET_KEY, MAP_3D_ASSETS, type Map3dAssetConfig, type Map3dAssetKey } from "../config/map3dAssets";
 import { generateTilePropPlan, type PropInstancePlan } from "../config/map3dProps";
 import { colorFromAddress } from "../utils/helpers/converters";
+import { biomeResourceMeta } from "./biomeResourceMeta";
 
 type Props = {
   hexes: HexTile[];
@@ -859,11 +860,26 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
     return typeof action.details === "function" ? action.details(hexId) : action.details;
   };
 
-  const renderContextAction = (action: HexContextMenuAction | undefined, hexId: string, fallbackLabel: string) => {
+  const getVisibleActionCount = (hexId: string) => {
+    let count = 0;
+    if (resolveActionVisible(contextMenuActions?.discover, hexId)) count += 1;
+    if (resolveActionVisible(contextMenuActions?.build, hexId)) count += 1;
+    if (resolveActionVisible(contextMenuActions?.upgrade, hexId)) count += 1;
+    if (resolveActionVisible(contextMenuActions?.collect, hexId)) count += 1;
+    return count;
+  };
+
+  const renderContextAction = (
+    action: HexContextMenuAction | undefined,
+    hexId: string,
+    fallbackLabel: string,
+    actionKey: "discover" | "build" | "upgrade" | "collect"
+  ) => {
     if (!resolveActionVisible(action, hexId)) return null;
     const enabled = resolveActionEnabled(action, hexId);
     const hint = resolveActionHint(action, hexId);
     const details = resolveActionDetails(action, hexId);
+    const useDiscoverCostGrid = actionKey === "discover" && getVisibleActionCount(hexId) === 1;
     return (
       <div className="hex-context-menu__action-row" key={fallbackLabel}>
         <span className="hex-context-menu__action-btn-wrap" title={!enabled && hint ? hint : undefined}>
@@ -879,7 +895,7 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
             {resolveActionLabel(action, hexId, fallbackLabel)}
           </button>
         </span>
-        {details ? <div className="hex-context-menu__cost-strip">{details}</div> : null}
+        {details ? <div className={`hex-context-menu__cost-strip${useDiscoverCostGrid ? " hex-context-menu__cost-strip--grid2" : ""}`}>{details}</div> : null}
       </div>
     );
   };
@@ -959,19 +975,36 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
       {contextMenu && selectedTile ? (
         <div
           ref={contextMenuRef}
-          className="hex-context-menu"
+          className={`hex-context-menu${getVisibleActionCount(selectedTile.id) === 0 ? " hex-context-menu--compact" : ""}`}
           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           onClick={(event) => event.stopPropagation()}
         >
           <p className="hex-context-menu__title">{selectedTile.id}</p>
-          <p>Biome: <strong>{selectedTile.biome}</strong></p>
-          <p>Resource: <strong>{biomeStyle[selectedTile.biome].resource}</strong></p>
-          <p>Owner: <strong>{selectedTile.owner ? `${selectedTile.owner.slice(0, 6)}…${selectedTile.owner.slice(-4)}` : "none"}</strong></p>
+          <p>
+            Biome: <strong style={{ color: biomeStyle[selectedTile.biome].edge }}>{selectedTile.biome}</strong>
+          </p>
+          <p>
+            Resource:{" "}
+            <strong className="hex-context-menu__resource-pill">
+              {(() => {
+                const { Icon, color, label } = biomeResourceMeta[selectedTile.biome];
+                return (
+                  <>
+                    <Icon size={13} color={color} aria-hidden />
+                    <span>{label}</span>
+                  </>
+                );
+              })()}
+            </strong>
+          </p>
+          <p>
+            Owner: <strong style={{ color: selectedTile.owner ? colorFromAddress(selectedTile.owner) : "#f3f7ff" }}>{selectedTile.owner ? (myAddress && selectedTile.owner.toLowerCase() === myAddress.toLowerCase() ? "You" : `${selectedTile.owner.slice(0, 6)}…${selectedTile.owner.slice(-4)}`) : "none"}</strong>
+          </p>
           <p>Structure: <strong>{selectedTile.structure ? `L${selectedTile.structure.level}` : "none"}</strong></p>
-          {renderContextAction(contextMenuActions?.discover, selectedTile.id, "Discover / Claim")}
-          {renderContextAction(contextMenuActions?.build, selectedTile.id, "Build lvl1")}
-          {renderContextAction(contextMenuActions?.upgrade, selectedTile.id, "Upgrade")}
-          {renderContextAction(contextMenuActions?.collect, selectedTile.id, "Collect resources")}
+          {renderContextAction(contextMenuActions?.discover, selectedTile.id, "Discover / Claim", "discover")}
+          {renderContextAction(contextMenuActions?.build, selectedTile.id, "Build lvl1", "build")}
+          {renderContextAction(contextMenuActions?.upgrade, selectedTile.id, "Upgrade", "upgrade")}
+          {renderContextAction(contextMenuActions?.collect, selectedTile.id, "Collect resources", "collect")}
           <div className="hex-context-menu__actions">
             <button type="button" onClick={() => setContextMenu(null)}>
               Close

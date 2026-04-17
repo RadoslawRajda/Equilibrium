@@ -403,6 +403,13 @@ button:disabled {
   flex: 0 1 auto;
 }
 
+.hex-context-menu__cost-strip--grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  grid-auto-rows: auto;
+  gap: 0.26rem 0.26rem;
+}
+
 .hex-context-menu__actions button {
   width: 156px;
   min-height: 34px;
@@ -417,9 +424,32 @@ button:disabled {
   margin: 0.1rem 0;
 }
 
+.hex-context-menu__resource-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+}
+
 .hex-context-menu__title {
   font-weight: 800;
   margin-bottom: 0.26rem !important;
+}
+
+.hex-context-menu--compact {
+  min-width: 0;
+  width: max-content;
+  max-width: min(220px, calc(100% - 24px));
+}
+
+.hex-context-menu--compact .hex-context-menu__actions {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.hex-context-menu--compact .hex-context-menu__actions button {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .resource-grid {
