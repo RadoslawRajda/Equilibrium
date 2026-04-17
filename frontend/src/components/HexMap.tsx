@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { HexGrid, Layout, Hexagon, Text } from "react-hexgrid";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import type { HexTile } from "../types";
+import { ownerPalette,colorFromAddress } from "../utlis/helpers/converters";
 
 type Props = {
   hexes: HexTile[];
@@ -16,14 +17,6 @@ const biomeStyle: Record<string, { fill: string; stroke: string }> = {
   Forest: { fill: "url(#forestGradient)", stroke: "#5bff9d" },
   Mountains: { fill: "url(#mountainGradient)", stroke: "#9cc4ff" },
   Desert: { fill: "url(#desertGradient)", stroke: "#ffad69" }
-};
-
-const ownerPalette = ["#56f0ff", "#ffd369", "#5bff9d", "#ff7d7d", "#9c7dff", "#ffad69"];
-
-const colorFromAddress = (address?: string | null) => {
-  if (!address) return "#f3f7ff";
-  const hash = address.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return ownerPalette[hash % ownerPalette.length];
 };
 
 export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [] }: Props) {

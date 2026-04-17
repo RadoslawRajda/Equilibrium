@@ -38,6 +38,7 @@ import {
   FALLBACK_LOBBY_ZERO_ROUND_SECONDS
 } from "./lib/chainGameDefaults";
 import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActivityFeed";
+import { ownerPalette,colorFromAddress } from "../src/utlis/helpers/converters";
 
 type ContractMeta = {
   contracts: {
@@ -1740,34 +1741,51 @@ function AppPage() {
           </div>
         ) : null}
 
-        <div className="action-group">
-          <h4>Players</h4>
-          {activeLobby.players.map((player) => (
-            <div key={player.address} className="player-row">
-              <div>
-                <strong>{player.nickname}</strong>
-                <p>
-                  {short(player.address)} {player.address.toLowerCase() === activeLobby.host.toLowerCase() ? "• host" : ""}{" "}
-                  {player.alive === false ? "• out" : ""}
-                </p>
-              </div>
-              <span className="player-tag">{player.alive === false ? "eliminated" : "active"}</span>
+      <div className="action-group">
+        <h4>Players</h4>
+        {activeLobby.players.map((player) => (
+          <div 
+            key={player.address} 
+            className="player-row"
+            style={{ 
+              borderLeft: `4px solid ${colorFromAddress(player.address)}`, // Dodaje kolorowy pasek z boku
+              borderRight: `1px solid ${colorFromAddress(player.address)}`, // Opcjonalnie delikatna ramka z prawej
+              paddingLeft: '12px' // Mały odstęp, żeby tekst nie dotykał paska
+            }}
+          >
+            <div>
+              <strong style={{ color: colorFromAddress(player.address) }}>
+                {player.nickname}
+              </strong>
+              <p>
+                {short(player.address)} {player.address.toLowerCase() === activeLobby.host.toLowerCase() ? "• host" : ""}{" "}
+                {player.alive === false ? "• out" : ""}
+              </p>
             </div>
-          ))}
-          {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
-            <button
-              type="button"
-              className="danger"
-              onClick={() => {
-                if (!window.confirm("Concede this match? Others may win if you are not the last player standing.")) return;
-                void action("game:concede", {});
-              }}
-              disabled={Boolean(pendingAction)}
+            <span 
+              className="player-tag"
+              style={{ color: player.alive === false ? '#666' : colorFromAddress(player.address) }}
             >
-              <Flag size={16} /> Concede match
-            </button>
-          ) : null}
-        </div>
+              {player.alive === false ? "eliminated" : "active"}
+            </span>
+          </div>
+        ))}
+
+        {/* Przycisk Concede bez zmian */}
+        {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
+          <button
+            type="button"
+            className="danger"
+            onClick={() => {
+              if (!window.confirm("Concede this match? Others may win if you are not the last player standing.")) return;
+              void action("game:concede", {});
+            }}
+            disabled={Boolean(pendingAction)}
+          >
+            <Flag size={16} /> Concede match
+          </button>
+        ) : null}
+      </div>
 
         <div className="action-group">
           <h4>Hex Actions</h4>
