@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-16T20:56:26.832Z",
+  "deployedAt": "2026-04-17T10:05:44.344Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -7369,6 +7369,24 @@
           "type": "function"
         },
         {
+          "inputs": [],
+          "name": "getEnergyConfig",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "maxEnergy",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "regenPerRound",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
           "inputs": [
             {
               "internalType": "uint256",
@@ -7814,6 +7832,19 @@
             }
           ],
           "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getTradingEnergyCost",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
           "type": "function"
         },
         {

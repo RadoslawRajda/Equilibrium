@@ -431,6 +431,27 @@ describe("GameCore gameplay", function () {
     expect(playerResources[4]).to.equal(36n);
   });
 
+  it("regenerates energy on each round advance and caps at configured max", async function () {
+    const { gameCore, host } = await setupLobby({ playerCount: 0 });
+    const start = firstTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS);
+    const target = adjacentTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS, start);
+
+    const energyCfg = await gameCore.getEnergyConfig();
+    expect(energyCfg[0]).to.equal(100n);
+    expect(energyCfg[1]).to.equal(50n);
+    expect(await gameCore.getTradingEnergyCost()).to.equal(0n);
+
+    await gameCore.connect(host).pickStartingHex(1, start.hexId, start.q, start.r);
+    const afterStart = await gameCore.getPlayerResources(1, host.address);
+    expect(afterStart[4]).to.equal(86n);
+
+    await mineSeconds(ROUND_SECONDS + 5);
+    await gameCore.connect(host).discoverHex(1, target.hexId);
+
+    const afterTimeoutAction = await gameCore.getPlayerResources(1, host.address);
+    expect(afterTimeoutAction[4]).to.equal(100n);
+  });
+
   it("exposes the collection energy cost by structure level", async function () {
     const { gameCore } = await deploySystem();
 

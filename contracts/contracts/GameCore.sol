@@ -262,28 +262,33 @@ contract GameCore is ActorAware {
         lobby.roundIndex += skippedRounds;
         lobby.roundEndsAt += skippedRounds * lobby.roundDurationSeconds;
         lobby.roundStartedAt = lobby.roundEndsAt - lobby.roundDurationSeconds;
+        _applyEnergyRegenForAdvancedRounds(lobby, skippedRounds);
         _resolveMaturedProposals(lobbyId);
         emit RoundAdvanced(lobbyId, lobby.roundIndex, lobby.roundEndsAt);
     }
 
     function _payBuildCost(Player storage player) internal {
-        (uint256 foodCost, uint256 woodCost, uint256 stoneCost,,) = GameConfig.buildCost();
+        (uint256 foodCost, uint256 woodCost, uint256 stoneCost,, uint256 energyCost) = GameConfig.buildCost();
         require(player.resources.food >= foodCost, "Not enough food");
         require(player.resources.wood >= woodCost, "Not enough wood");
         require(player.resources.stone >= stoneCost, "Not enough stone");
+        require(player.resources.energy >= energyCost, "Not enough energy");
         player.resources.food -= foodCost;
         player.resources.wood -= woodCost;
         player.resources.stone -= stoneCost;
+        player.resources.energy -= energyCost;
     }
 
     function _payUpgradeCost(Player storage player) internal {
-        (uint256 foodCost,, uint256 stoneCost, uint256 oreCost,) = GameConfig.upgradeCost();
+        (uint256 foodCost,, uint256 stoneCost, uint256 oreCost, uint256 energyCost) = GameConfig.upgradeCost();
         require(player.resources.food >= foodCost, "Not enough food");
         require(player.resources.stone >= stoneCost, "Not enough stone");
         require(player.resources.ore >= oreCost, "Not enough ore");
+        require(player.resources.energy >= energyCost, "Not enough energy");
         player.resources.food -= foodCost;
         player.resources.stone -= stoneCost;
         player.resources.ore -= oreCost;
+        player.resources.energy -= energyCost;
     }
 
     function getBuildCost() external pure returns (Resources memory) {
@@ -352,6 +357,38 @@ contract GameCore is ActorAware {
         balance.stone += gain.stone;
         balance.ore += gain.ore;
         balance.energy += gain.energy;
+    }
+
+    function _chargeTradingEnergy(Player storage player) internal {
+        uint256 energyCost = GameConfig.tradingEnergyCost();
+        require(player.resources.energy >= energyCost, "Not enough energy");
+        player.resources.energy -= energyCost;
+    }
+
+    function _regenPlayerEnergy(Player storage player, uint256 energyGain) internal {
+        if (!player.exists || !player.alive || energyGain == 0) {
+            return;
+        }
+        uint256 maxEnergy = GameConfig.energyMax();
+        if (player.resources.energy >= maxEnergy) {
+            return;
+        }
+        uint256 nextEnergy = player.resources.energy + energyGain;
+        player.resources.energy = nextEnergy > maxEnergy ? maxEnergy : nextEnergy;
+    }
+
+    function _applyEnergyRegenForAdvancedRounds(Lobby storage lobby, uint256 roundsAdvanced) internal {
+        if (roundsAdvanced == 0) {
+            return;
+        }
+        uint256 perRoundRegen = GameConfig.energyRegenPerRound();
+        if (perRoundRegen == 0) {
+            return;
+        }
+        uint256 energyGain = perRoundRegen * roundsAdvanced;
+        for (uint256 i = 0; i < lobby.players.length; i++) {
+            _regenPlayerEnergy(lobby.playerState[lobby.players[i]], energyGain);
+        }
     }
 
     function _subtractKind(Resources storage balance, uint8 kind, uint256 amount) internal {
@@ -546,15 +583,7 @@ contract GameCore is ActorAware {
 
         Resources memory cost;
         (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(player.ownedHexCount);
-        require(player.resources.food >= cost.food, "Not enough resources for discovery");
-        require(player.resources.wood >= cost.wood, "Not enough resources for discovery");
-        require(player.resources.stone >= cost.stone, "Not enough resources for discovery");
-        require(player.resources.ore >= cost.ore, "Not enough resources for discovery");
-
-        player.resources.food -= cost.food;
-        player.resources.wood -= cost.wood;
-        player.resources.stone -= cost.stone;
-        player.resources.ore -= cost.ore;
+        _subtractResources(player.resources, cost);
 
         tile.owner = playerAddress;
         tile.discovered = true;
@@ -643,7 +672,9 @@ contract GameCore is ActorAware {
         _requireNotEnded(lobby);
         require(lobby.status == Status.Running, "Game not running");
         address playerAddress = _actor();
-        require(lobby.playerState[playerAddress].exists && lobby.playerState[playerAddress].alive, "Player not active");
+        Player storage maker = lobby.playerState[playerAddress];
+        require(maker.exists && maker.alive, "Player not active");
+        _chargeTradingEnergy(maker);
         lobby.trades.push(TradeOffer({
             maker: playerAddress,
             taker: taker,
@@ -675,6 +706,7 @@ contract GameCore is ActorAware {
         Player storage makerPlayer = lobby.playerState[maker];
         Player storage takerPlayer = lobby.playerState[playerAddress];
         require(takerPlayer.exists && takerPlayer.alive, "Player not active");
+        _chargeTradingEnergy(takerPlayer);
         Resources memory offerAmt = trade.offer;
         Resources memory requestAmt = trade.request;
         _subtractResources(makerPlayer.resources, offerAmt);
@@ -706,6 +738,7 @@ contract GameCore is ActorAware {
         uint256 recv = GameConfig.bankTradeReceiveAmount();
         Player storage player = lobby.playerState[_actor()];
         require(player.exists && player.alive, "Player not active");
+        _chargeTradingEnergy(player);
         uint256 totalGive = give * times;
         uint256 totalRecv = recv * times;
         _subtractKind(player.resources, sellKind, totalGive);
@@ -841,6 +874,14 @@ contract GameCore is ActorAware {
         return GameConfig.bankTradeBulkMaxLots();
     }
 
+    function getTradingEnergyCost() external pure returns (uint256) {
+        return GameConfig.tradingEnergyCost();
+    }
+
+    function getEnergyConfig() external pure returns (uint256 maxEnergy, uint256 regenPerRound) {
+        return (GameConfig.energyMax(), GameConfig.energyRegenPerRound());
+    }
+
     function previewCraftAlloyCost() external pure returns (Resources memory cost) {
         (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.craftAlloyCost();
     }
@@ -909,6 +950,7 @@ contract GameCore is ActorAware {
         } else {
             lobby.roundIndex += 1;
         }
+        _applyEnergyRegenForAdvancedRounds(lobby, 1);
         _resolveMaturedProposals(lobbyId);
 
         lobby.roundStartedAt = block.timestamp;

@@ -32,7 +32,9 @@ import {
 import { LobbyRepository, type LobbySummary } from "./lib/lobbyRepository";
 import { projectRunningRoundClock } from "./lib/roundClock";
 import {
+  FALLBACK_ENERGY_REGEN_PER_ROUND,
   FALLBACK_LOBBY_RUNNING_ROUND_SECONDS,
+  FALLBACK_MAX_ENERGY,
   FALLBACK_LOBBY_ZERO_ROUND_SECONDS
 } from "./lib/chainGameDefaults";
 import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActivityFeed";
@@ -685,6 +687,35 @@ function AppPage() {
   const roundCountdown = projectedRound.deadlineSec
     ? Math.max(0, projectedRound.deadlineSec - nowSec)
     : null;
+
+  const projectedPlayers = useMemo(() => {
+    if (!activeLobby) return [];
+    if (activeLobby.status !== "running") return activeLobby.players;
+    const roundsElapsed = Math.max(0, projectedRound.index - activeLobby.rounds.index);
+    if (roundsElapsed === 0) return activeLobby.players;
+    const energyMax = activeActionCosts?.energyMax ?? FALLBACK_MAX_ENERGY;
+    const regenPerRound = activeActionCosts?.energyRegenPerRound ?? FALLBACK_ENERGY_REGEN_PER_ROUND;
+    const energyGain = roundsElapsed * regenPerRound;
+    return activeLobby.players.map((player) => {
+      const currentEnergy = Number(player.resources.energy ?? 0);
+      const nextEnergy = Math.min(energyMax, Math.max(0, Math.floor(currentEnergy + energyGain)));
+      return {
+        ...player,
+        resources: {
+          ...player.resources,
+          energy: nextEnergy
+        }
+      };
+    });
+  }, [activeActionCosts?.energyMax, activeActionCosts?.energyRegenPerRound, activeLobby, projectedRound.index]);
+
+  const projectedMe = useMemo(() => {
+    if (!activeLobby?.me || !address) return activeLobby?.me ?? null;
+    const byAddress = projectedPlayers.find(
+      (player) => player.address.toLowerCase() === address.toLowerCase()
+    );
+    return byAddress ?? activeLobby.me;
+  }, [activeLobby?.me, address, projectedPlayers]);
 
   /**
    * Round used for barter expiry / open count: same wall-clock projection as the header countdown
@@ -1374,13 +1405,17 @@ function AppPage() {
   const highlighted = activeLobby?.mapHexes.find((h) => h.id === highlightedHex);
   const selectedForDetails = highlighted ?? selected;
   const activeActionHexId = selectedForDetails?.id ?? highlightedHex;
-  const selectedOwner = selectedForDetails?.owner ? activeLobby?.players.find((player) => player.address.toLowerCase() === selectedForDetails.owner?.toLowerCase()) : null;
+  const selectedOwner = selectedForDetails?.owner
+    ? projectedPlayers.find((player) => player.address.toLowerCase() === selectedForDetails.owner?.toLowerCase())
+    : null;
   const isSelectedMine = Boolean(selectedForDetails?.owner && address && selectedForDetails.owner.toLowerCase() === address.toLowerCase());
   const hasStructure = Boolean(selectedForDetails?.structure);
   const ownedHexCount = activeLobby?.mapHexes.filter((hex) => hex.owner?.toLowerCase() === address?.toLowerCase()).length ?? 0;
   const discoverCost = activeActionCosts?.discover ?? null;
   const buildCost = activeActionCosts?.build ?? null;
   const upgradeCost = activeActionCosts?.upgrade ?? null;
+  const craftCost = activeActionCosts?.craft ?? null;
+  const tradeEnergyCost = activeActionCosts?.tradingEnergyCost ?? 0;
   const collectEnergyForStructure =
     selectedForDetails?.structure?.level === 2
       ? activeActionCosts?.collectEnergyLevel2
@@ -1598,11 +1633,11 @@ function AppPage() {
   return (
     <div className={`game-shell${isSpectator ? " game-shell--spectator" : ""}`}>
       {!isSpectator ? (
-        <ResourcePanel me={activeLobby.me} round={activeLobby.rounds.index} effects={activeLobby.activeEffects} />
+        <ResourcePanel me={projectedMe} round={projectedRound.index} effects={activeLobby.activeEffects} />
       ) : (
         <aside className="panel spectator-sidebar">
           <SpectatorPlayersPanel
-            players={activeLobby.players}
+            players={projectedPlayers}
             host={activeLobby.host}
             round={projectedRound.index}
             statusLabel={activeLobby.status === "zero-round" ? "Starting positions" : "Live match"}
@@ -1773,6 +1808,12 @@ function AppPage() {
           <p className="selected-text">
             Trade with the neutral bank: pay <strong>4× lots</strong> of one basic resource for <strong>1× lots</strong> of
             another (4:1 per lot). One transaction can repeat up to <strong>{bankTradeBulkMaxLots}</strong> lots.
+            {tradeEnergyCost > 0 ? (
+              <>
+                {" "}
+                Each trade action also costs <strong>{tradeEnergyCost} energy</strong>.
+              </>
+            ) : null}
           </p>
           <div className="trade-line">
             <label htmlFor="bank-sell">Pay</label>
@@ -1834,7 +1875,13 @@ function AppPage() {
               </>
             )}
           </p>
-          <p className="selected-text">{craftCostHint ? `Next craft cost: ${craftCostHint}` : "Loading craft preview…"}</p>
+          <p className="selected-text">
+            {craftCost
+              ? `Next craft cost: ${formatCost(craftCost)}`
+              : craftCostHint
+                ? `Next craft cost: ${craftCostHint}`
+                : "Loading craft preview…"}
+          </p>
           <button
             type="button"
             onClick={() => action("game:craft", {})}
@@ -1855,7 +1902,10 @@ function AppPage() {
             Trading offers
             <span className="trade-offers-badge">{openTradeOffersCount}</span>
           </button>
-          <p className="selected-text">Broadcast a trade offer. Anyone can accept if they can pay the request.</p>
+          <p className="selected-text">
+            Broadcast a trade offer. Anyone can accept if they can pay the request.
+            {tradeEnergyCost > 0 ? ` Trading costs ${tradeEnergyCost} energy per action.` : ""}
+          </p>
           <div className="trade-grid">
             <div>
               <strong>You offer</strong>

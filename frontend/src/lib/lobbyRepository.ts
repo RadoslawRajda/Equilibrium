@@ -14,6 +14,10 @@ import {
   readMapConfigTuple,
   type ActionCosts
 } from "./gameUtils";
+import {
+  FALLBACK_ENERGY_REGEN_PER_ROUND,
+  FALLBACK_MAX_ENERGY
+} from "./chainGameDefaults";
 
 function parseGetTradeTuple(raw: unknown, id: number): TradeOfferView | null {
   if (!Array.isArray(raw) || raw.length < 15) return null;
@@ -377,7 +381,7 @@ export class LobbyRepository {
         playerResources = pr;
         viewerCraftedGoods = vcg as bigint;
       }
-      const [buildCostRaw, upgradeCostRaw, discoverCostRaw, bankBulkMaxRaw, collectE1Raw, collectE2Raw, collectY1Raw, collectY2Raw] =
+      const [buildCostRaw, upgradeCostRaw, discoverCostRaw, craftCostRaw, tradingEnergyCostRaw, energyConfigRaw, bankBulkMaxRaw, collectE1Raw, collectE2Raw, collectY1Raw, collectY2Raw] =
         await Promise.all([
           publicClient.readContract({
             address: gameCoreAddress,
@@ -397,6 +401,21 @@ export class LobbyRepository {
                 args: [BigInt(lobbyId), viewerAddress]
               } as any).catch(() => null)
             : null,
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "previewCraftAlloyCost"
+          } as any).catch(() => null),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getTradingEnergyCost"
+          } as any).catch(() => null),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getEnergyConfig"
+          } as any).catch(() => null),
           publicClient.readContract({
             address: gameCoreAddress,
             abi: gameCoreAbi,
@@ -434,12 +453,43 @@ export class LobbyRepository {
         const n = typeof raw === "bigint" ? Number(raw) : Number(raw);
         return Number.isFinite(n) && n >= 0 ? n : fallback;
       };
+      const nTuple = (raw: unknown, index: number, fallback: number) => {
+        if (raw == null) return fallback;
+        if (Array.isArray(raw)) {
+          const v = raw[index];
+          const n = typeof v === "bigint" ? Number(v) : Number(v);
+          return Number.isFinite(n) && n >= 0 ? n : fallback;
+        }
+        if (typeof raw === "object") {
+          const o = raw as Record<string, unknown>;
+          if (index === 0) {
+            const v = o.maxEnergy;
+            const n = typeof v === "bigint" ? Number(v) : Number(v);
+            return Number.isFinite(n) && n >= 0 ? n : fallback;
+          }
+          const v = o.regenPerRound;
+          const n = typeof v === "bigint" ? Number(v) : Number(v);
+          return Number.isFinite(n) && n >= 0 ? n : fallback;
+        }
+        return fallback;
+      };
+      const tradingEnergyCost = nCollectEnergy(tradingEnergyCostRaw, 0);
+      const energyMax = nTuple(energyConfigRaw, 0, FALLBACK_MAX_ENERGY);
+      const energyRegenPerRound = nTuple(
+        energyConfigRaw,
+        1,
+        FALLBACK_ENERGY_REGEN_PER_ROUND
+      );
       const actionCosts: ActionCosts | null =
         buildCostRaw && upgradeCostRaw
           ? {
               build: normalizeContractResources(buildCostRaw),
               upgrade: normalizeContractResources(upgradeCostRaw),
               discover: discoverCostRaw ? normalizeContractResources(discoverCostRaw) : emptyCost(),
+              craft: craftCostRaw ? normalizeContractResources(craftCostRaw) : emptyCost(),
+              tradingEnergyCost,
+              energyMax,
+              energyRegenPerRound,
               collectEnergyLevel1: nCollectEnergy(collectE1Raw, 10),
               collectEnergyLevel2: nCollectEnergy(collectE2Raw, 20),
               collectResourceYieldLevel1: nCollectEnergy(collectY1Raw, 30),

@@ -26,6 +26,10 @@ export type ActionCosts = {
   discover: ActionCost;
   build: ActionCost;
   upgrade: ActionCost;
+  craft: ActionCost;
+  tradingEnergyCost: number;
+  energyMax: number;
+  energyRegenPerRound: number;
   /** `GameCore.previewCollectionEnergyCost(1)` */
   collectEnergyLevel1: number;
   /** `GameCore.previewCollectionEnergyCost(2)` */

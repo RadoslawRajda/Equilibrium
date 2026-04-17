@@ -3,17 +3,45 @@ pragma solidity ^0.8.28;
 
 /// @dev Central economy tuning — paced for ~10–15 rounds to decisive play (alloy win) in typical sessions.
 library GameConfig {
+    function energyMax() internal pure returns (uint256) {
+        return 100;
+    }
+
+    function energyRegenPerRound() internal pure returns (uint256) {
+        return 50;
+    }
+
+    function discoverEnergyCost() internal pure returns (uint256) {
+        return 0;
+    }
+
+    function buildEnergyCost() internal pure returns (uint256) {
+        return 50;
+    }
+
+    function upgradeEnergyCost() internal pure returns (uint256) {
+        return 0;
+    }
+
+    function craftAlloyEnergyCost() internal pure returns (uint256) {
+        return 0;
+    }
+
+    function tradingEnergyCost() internal pure returns (uint256) {
+        return 0;
+    }
+
     /// Starting stock: enough for early builds; not so large that the mid-game never arrives.
     function startingResources() internal pure returns (uint256 food, uint256 wood, uint256 stone, uint256 ore, uint256 energy) {
         return (18, 18, 18, 18, 36);
     }
 
     function buildCost() internal pure returns (uint256 food, uint256 wood, uint256 stone, uint256 ore, uint256 energy) {
-        return (5, 5, 5, 0, 0);
+        return (5, 5, 5, 0, buildEnergyCost());
     }
 
     function upgradeCost() internal pure returns (uint256 food, uint256 wood, uint256 stone, uint256 ore, uint256 energy) {
-        return (0, 0, 5, 5, 0);
+        return (0, 0, 5, 5, upgradeEnergyCost());
     }
 
     /// Discovery scales with empire size; capped so late game stays affordable.
@@ -26,7 +54,7 @@ library GameConfig {
             resourceCost = 20;
         }
 
-        return (resourceCost, resourceCost, resourceCost, resourceCost, 0);
+        return (resourceCost, resourceCost, resourceCost, resourceCost, discoverEnergyCost());
     }
 
     function collectionEnergyCost(uint8 structureLevel) internal pure returns (uint256) {
@@ -73,7 +101,7 @@ library GameConfig {
 
     /// @dev Smelt basics into alloy; tuned with `victoryGoodsThreshold` for ~10–15 round games.
     function craftAlloyCost() internal pure returns (uint256 food, uint256 wood, uint256 stone, uint256 ore, uint256 energy) {
-        return (10, 10, 10, 10, 0);
+        return (10, 10, 10, 10, craftAlloyEnergyCost());
     }
 
     function craftAlloyYield() internal pure returns (uint256) {

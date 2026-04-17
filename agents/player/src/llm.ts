@@ -8,16 +8,16 @@ const USER_PREFIX =
   "CRITICAL: Output ONLY one JSON object. The first non-whitespace character MUST be `{`. " +
   "HOARD LIMIT (prompt): keep each of food, wood, stone, ore under ~100 in snapshot.resources — if any basic is >=100, STOP farming that pile; " +
   "trade, bankTrade, craftAlloy, or expand other biomes instead. Pushing one stat to 500+ is wrong. " +
-  "WIN PATH: each craftAlloy burns 10 food+wood+stone+ore (see economyHints.craftAlloyCost). " +
-  "You need many crafts to hit victoryGoodsThreshold alloy — keep basics ROUGHLY BALANCED. " +
+  "WIN PATH: trust economyHints.craftAlloyCost and victoryGoodsThreshold — default game is 10 each per craft, 5 alloy to win ⇒ 50/50/50/50 basics at craftedGoods 0 is enough to chain craftAlloy five times and win immediately when craftAlloyReasonable; do not over-farm past the win line. " +
+  "Keep basics ROUGHLY BALANCED until you can close. " +
   "Stockpiling e.g. 900/3/900/3 is LOSING: you cannot craft; fix via discover/build/upgrade (diversify biomes and income), " +
-  "then createTrade/acceptTrade with peerAddresses, else bankTrade 4:1 when peers are useless or you refuse to help them. " +
+  "Liquidity: compare openTrades (accept best vs 4:1 bank), bankTrade for immediate fix, at most ONE createTrade per plan for same skew — never chain multiple createTrade. Bank is first-class, not only when peers fail. " +
   "Do NOT only collect every turn without expanding — collection skews one resource; growth (discover → build → upgrade) gives independence. " +
   "Smelt only when economyHints.craftAlloyReasonable is true (you have structures). " +
   "Map: upgradeStructure only your lvl-1 structures; buildStructure on your empty hexes; discover ONLY hex ids in economyHints.discoverableHexIds. " +
-  "If economyHints.rebalanceTradeDraft is present, prefer createTrade with that offer/request (open taker 0x0) before another collect that worsens skew — the draft is computed from your pouch. " +
+  "If economyHints.rebalanceTradeDraft is present, use it to choose ONE barter action (single createTrade OR bank if bank wins on math/speed) before collect that worsens skew. " +
   "Running priority: if canAffordDiscover and discoverableHexIds non-empty, bias toward discover; else build/upgrade where affordable; " +
-  "collect from mature structures; craftAlloy if craftAlloyReasonable; trades to rebalance; bank as fallback. " +
+  "collect from mature structures; craftAlloy if craftAlloyReasonable; rebalance via best of acceptTrade / bankTrade / one createTrade. " +
   "Round clock: snapshot.round.clock.logicalRoundIndex for collect vs builtAtRound when present. " +
   "Trust economyHints costs. Do NOT summarize the snapshot. No markdown.\n\n=== SNAPSHOT ===\n";
 
@@ -83,9 +83,10 @@ function defaultPersona(): string {
     strategy = [
       "CryptoCatan agent: reply with one JSON object { thought, actions }.",
       "Prompt cap: keep each basic (food wood stone ore) under ~100 — if one is >=100 stop collecting that line; trade/bank/craft/expand instead.",
-      "Alloy needs balanced basics over many crafts — expand (discover/build/upgrade), then trade or bankTrade to fix skew; do not only collect.",
+      "Default spec: 5 alloy win, 10 each per craft ⇒ 50/50/50/50 can finish in one batch of craftAlloy if hints allow; trust economyHints over fixed numbers.",
+      "Balance basics via discover/build/upgrade and trade/bank; do not only collect.",
       "Discover only hex ids in economyHints.discoverableHexIds. Prefer discover when affordable. Upgrade only your structures.",
-      "createTrade / acceptTrade with peerAddresses; bankTrade when no peer deal or you refuse to help opponents.",
+      "Compare acceptTrade vs bankTrade (4:1 instant) vs one createTrade — no multiple createTrade per skew; bank when best or fastest.",
       "Use economyHints; craftAlloy only when craftAlloyReasonable is true.",
       'Example: {"thought":"Food at 110 — bank food to ore instead of another plains collect.","actions":[{"type":"bankTrade","sellKind":0,"buyKind":3}]}'
     ].join(" ");
