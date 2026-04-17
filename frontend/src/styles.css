@@ -1,0 +1,332 @@
+:root {
+  --bg-deep: #060a1d;
+  --bg-mid: #121b3f;
+  --panel: rgba(13, 21, 56, 0.82);
+  --text: #f3f7ff;
+  --muted: #9fb0de;
+  --accent: #56f0ff;
+  --warning: #ff7d7d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "Outfit", sans-serif;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(86, 240, 255, 0.18), transparent 40%),
+    radial-gradient(circle at 80% 10%, rgba(91, 255, 157, 0.14), transparent 35%),
+    linear-gradient(145deg, var(--bg-deep), #090f2a 35%, var(--bg-mid));
+  min-height: 100vh;
+}
+
+button,
+input {
+  font-family: "Sora", sans-serif;
+}
+
+.connect-screen,
+.lobby-shell {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+.connect-buttons,
+.lobby-actions {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+button {
+  border: 1px solid rgba(86, 240, 255, 0.4);
+  background: linear-gradient(135deg, #11225a, #1b2f75);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 0.65rem 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+button:hover {
+  box-shadow: 0 0 18px rgba(86, 240, 255, 0.35);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lobby-list {
+  width: min(860px, 100%);
+  background: var(--panel);
+  border: 1px solid rgba(130, 160, 255, 0.25);
+  border-radius: 20px;
+  padding: 1rem;
+}
+
+.lobby-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.9rem;
+  border-bottom: 1px solid rgba(130, 160, 255, 0.2);
+}
+
+.game-shell {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  gap: 0.8rem;
+  padding: 0.8rem;
+}
+
+.panel {
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(118, 157, 255, 0.25);
+  border-radius: 18px;
+  padding: 1rem;
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.map-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.top-hud {
+  background: var(--panel);
+  border: 1px solid rgba(118, 157, 255, 0.25);
+  border-radius: 18px;
+  padding: 0.8rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.top-hud-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.round-timer {
+  font-size: 0.86rem;
+  color: #dfe8ff;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(86, 240, 255, 0.35);
+  background: rgba(7, 13, 38, 0.72);
+}
+
+.map-wrap {
+  flex: 1;
+  min-height: 0;
+  height: calc(100vh - 160px);
+  border: 1px solid rgba(118, 157, 255, 0.2);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 211, 105, 0.15), transparent 32%),
+    radial-gradient(circle at 80% 75%, rgba(86, 240, 255, 0.1), transparent 32%),
+    linear-gradient(180deg, #0c1232, #10173f);
+}
+
+.resource-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+}
+
+.resource-item {
+  display: flex;
+  gap: 0.7rem;
+  border: 1px solid;
+  border-radius: 14px;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.resource-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.resource-item strong {
+  font-size: 1rem;
+}
+
+.status-card,
+.effects-list,
+.action-group,
+.log-list {
+  margin-top: 1rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(130, 160, 255, 0.2);
+  border-radius: 14px;
+  background: rgba(8, 15, 42, 0.55);
+}
+
+.player-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0;
+  border-top: 1px solid rgba(130, 160, 255, 0.15);
+}
+
+.player-row p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.effect-chip {
+  display: inline-block;
+  margin-right: 0.35rem;
+  margin-top: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(86, 240, 255, 0.4);
+  font-size: 0.75rem;
+}
+
+.selected-text {
+  color: var(--muted);
+  margin-top: 0;
+}
+
+.action-group input {
+  width: 100%;
+  margin-bottom: 0.45rem;
+  border-radius: 10px;
+  border: 1px solid rgba(130, 160, 255, 0.4);
+  background: #0e1a45;
+  color: var(--text);
+  padding: 0.45rem;
+}
+
+.inline-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.action-group button {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0.45rem;
+}
+
+.hex-details p {
+  margin: 0.3rem 0;
+}
+
+.trade-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.trade-grid strong {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.trade-line {
+  display: grid;
+  grid-template-columns: 1fr 90px;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.trade-line label {
+  text-transform: capitalize;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.vote-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.vote-preset-grid button {
+  width: 100%;
+}
+
+.hex-action-hidden {
+  display: none;
+}
+
+.vote-item {
+  border-top: 1px solid rgba(130, 160, 255, 0.2);
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.vote-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.error-banner {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(255, 125, 125, 0.2);
+  border: 1px solid rgba(255, 125, 125, 0.6);
+  color: #ffd0d0;
+}
+
+@media (max-width: 1280px) {
+  .game-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    height: auto;
+    overflow: auto;
+  }
+
+  .map-wrap {
+    height: 62vh;
+  }
+
+  .trade-grid,
+  .vote-preset-grid {
+    grid-template-columns: 1fr;
+  }
+}
