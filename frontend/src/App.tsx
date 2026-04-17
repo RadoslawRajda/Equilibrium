@@ -9,6 +9,7 @@ import { entryPoint08Address } from "viem/account-abstraction";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import abi from "./abi/localhost.json";
 import { HexMap } from "./components/HexMap";
+import { HexMap2D } from "./components/HexMap2D";
 import { Lobby } from "./components/Lobby";
 import { LobbyRoom } from "./components/LobbyRoom";
 import { ResourcePanel } from "./components/ResourcePanel";
@@ -75,6 +76,7 @@ const FALLBACK_TICKET_PRICE_WEI = parseEther("5");
 /** Matches GameConfig.craftAlloyCost — used if previewCraftAlloyCost read fails */
 const FALLBACK_CRAFT_ALLOY_COST = { food: 3, wood: 3, stone: 3, ore: 3, energy: 0 };
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+type MapRendererMode = "3d" | "2d";
 const VOTE_PRESETS = [
   {
     id: "foodBoost",
@@ -130,6 +132,13 @@ function AppPage() {
   const [activeMapConfig, setActiveMapConfig] = useState<{ seed: string; radius: number } | null>(null);
   const [activeActionCosts, setActiveActionCosts] = useState<ActionCosts | null>(null);
   const [selectedHex, setSelectedHex] = useState<string | undefined>();
+  const [mapRenderer, setMapRenderer] = useState<MapRendererMode>(() => {
+    const fromEnv = String(import.meta.env.VITE_MAP_RENDERER || "").toLowerCase();
+    const envDefault: MapRendererMode = fromEnv === "2d" ? "2d" : "3d";
+    if (typeof window === "undefined") return envDefault;
+    const saved = window.localStorage.getItem("cryptocatan:map-renderer");
+    return saved === "2d" || saved === "3d" ? saved : envDefault;
+  });
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
   const [isCreatingLobby, setIsCreatingLobby] = useState(false);
@@ -187,6 +196,11 @@ function AppPage() {
     const tick = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
     return () => clearInterval(tick);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("cryptocatan:map-renderer", mapRenderer);
+  }, [mapRenderer]);
 
   const lobbyManagerAddress = contracts?.contracts?.LobbyManager?.address as `0x${string}` | undefined;
   const lobbyManagerAbi = contracts?.contracts?.LobbyManager?.abi;
@@ -1439,6 +1453,7 @@ function AppPage() {
   const canUpgradeHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure?.level === 1);
   const canDestroyHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure);
   const canCollectHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure);
+  const ActiveMapComponent = mapRenderer === "3d" ? HexMap : HexMap2D;
   let selectedActionCost: string | null = canDiscoverHere
     ? discoverCost && formatCost(discoverCost)
     : canBuildHere
@@ -1666,11 +1681,19 @@ function AppPage() {
           <div className="top-hud-meta">
             <span className="round-timer">{projectedRound.deadlineSec ? `Time left ${formatCountdown(roundCountdown)}` : "Waiting for round"}</span>
             {activeMapConfig && <span className="round-timer">Map r={activeMapConfig.radius} seed={activeMapConfig.seed.slice(0, 10)}...</span>}
+            <button
+              type="button"
+              className="map-toggle-button"
+              onClick={() => setMapRenderer((current) => (current === "3d" ? "2d" : "3d"))}
+              title="Switch map renderer"
+            >
+              Map: {mapRenderer.toUpperCase()}
+            </button>
           </div>
           <button onClick={() => disconnect()}>Disconnect wallet</button>
         </div>
 
-        <HexMap
+        <ActiveMapComponent
           hexes={activeLobby.mapHexes}
           myAddress={isSpectator ? undefined : address}
           selectedHex={highlightedHex}

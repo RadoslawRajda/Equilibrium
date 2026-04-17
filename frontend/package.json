@@ -12,6 +12,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.17.10",
+    "@react-three/postprocessing": "^2.19.1",
     "@tanstack/react-query": "^5.51.1",
     "canvas-confetti": "^1.9.3",
     "framer-motion": "^11.3.16",
@@ -23,6 +26,7 @@
     "react-router-dom": "^6.30.3",
     "react-zoom-pan-pinch": "^3.4.4",
     "socket.io-client": "^4.7.5",
+    "three": "^0.165.0",
     "viem": "^2.19.9",
     "wagmi": "^2.12.7"
   },
