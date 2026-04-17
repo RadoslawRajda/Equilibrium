@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { HexGrid, Layout, Hexagon, Text } from "react-hexgrid";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import type { HexTile } from "../types";
+import { colorFromAddress } from "../utils/helpers/converters";
 
 type Props = {
   hexes: HexTile[];
@@ -17,14 +18,6 @@ const biomeStyle: Record<string, { fill: string; stroke: string; resource: strin
   Forest: { fill: "url(#forestGradient)", stroke: "#5bff9d", resource: "wood" },
   Mountains: { fill: "url(#mountainGradient)", stroke: "#9cc4ff", resource: "stone/ore" },
   Desert: { fill: "url(#desertGradient)", stroke: "#ffad69", resource: "energy" }
-};
-
-const ownerPalette = ["#56f0ff", "#ffd369", "#5bff9d", "#ff7d7d", "#9c7dff", "#ffad69"];
-
-const colorFromAddress = (address?: string | null) => {
-  if (!address) return "#f3f7ff";
-  const hash = address.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return ownerPalette[hash % ownerPalette.length];
 };
 
 export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [] }: Props) {

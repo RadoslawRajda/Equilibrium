@@ -1,7 +1,21 @@
-export const ownerPalette = ["#56f0ff", "#ffd369", "#5bff9d", "#ff7d7d", "#9c7dff", "#ffad69"];
+const hashAddress = (value: string) => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
 
 export const colorFromAddress = (address?: string | null) => {
   if (!address) return "#f3f7ff";
-  const hash = address.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return ownerPalette[hash % ownerPalette.length];
+
+  const normalized = address.toLowerCase();
+  const hash = hashAddress(normalized);
+  const hue = hash % 360;
+  const saturation = 68 + ((hash >>> 9) % 16);
+  const lightness = 52 + ((hash >>> 17) % 10);
+
+  // Use legacy comma-separated hsl() syntax for broader Three.js parser compatibility.
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
