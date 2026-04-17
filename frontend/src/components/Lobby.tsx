@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { PlusCircle, Wallet } from "lucide-react";
+import { PlusCircle, Wallet, LogOut } from "lucide-react";
 import { useState } from "react";
 import { formatEther } from "viem";
 
@@ -44,7 +44,7 @@ export function Lobby({
 
   return (
     <div className="lobby-shell">
-      <header>
+      <header className="lobby-header">
         <h1>Equilibrium</h1>
         <p>Strategic economy game with an AI Game Master</p>
       </header>
@@ -52,14 +52,16 @@ export function Lobby({
       <div className="wallet-strip">
         <Wallet size={18} />
         <span>{address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "No wallet connected"}</span>
-        <button onClick={onDisconnect}>Disconnect</button>
+        <button onClick={onDisconnect}>
+          <LogOut size={16} /> Disconnect
+        </button>
       </div>
 
       {deployHint ? <p className="error-banner">{deployHint}</p> : null}
 
       {claimableWei != null && claimableWei > 0n && onClaimLobbyBalance ? (
-        <section className="lobby-actions" style={{ flexWrap: "wrap" }}>
-          <p style={{ margin: 0, flex: "1 1 100%" }}>
+        <section className="lobby-actions">
+          <p style={{ margin: 0, width: "100%", textAlign: "center" }}>
             <strong>Lobby contract balance</strong>: {formatEther(claimableWei)} ETH — claim to your wallet.
           </p>
           <motion.button
