@@ -1,16 +1,28 @@
 services:
   ganache:
-    image: trufflesuite/ganache:v7.9.2
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint:
+      - anvil
     ports:
       - "8545:8545"
     command:
-      - --chain.vmErrorsOnRPCResponse=true
-      - --wallet.totalAccounts=12
-      - --wallet.deterministic
-      - --miner.blockTime
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8545"
+      - --mnemonic
+      - "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      - --chain-id
+      - "1337"
+      - --accounts
+      - "12"
+      - --balance
+      - "1000"
+      - --block-time
       - "1"
-      - --wallet.defaultBalance=1000
-      - --server.host=0.0.0.0
+      - --hardfork
+      - Cancun
+      - --steps-tracing
 
   hardhat:
     image: node:20-alpine
@@ -19,31 +31,44 @@ services:
       - ./contracts:/app
     command: >
       sh -c "export HARDHAT_DISABLE_TELEMETRY=true && export HARDHAT_DISABLE_TELEMETRY_PROMPT=true && npm install &&
-      npx hardhat compile --force &&
-      npx hardhat run scripts/deploy.js --network ganache &&
+      npx hardhat run scripts/deploy.js --network ganache --no-compile &&
       tail -f /dev/null"
     depends_on:
       - ganache
 
-  backend:
-    image: node:20-alpine
-    working_dir: /app
-    volumes:
-      - ./backend:/app
-      - ./contracts/deployments:/contracts/deployments:ro
-    environment:
-      - PORT=4000
-      - RPC_URL=http://ganache:8545
-      - OLLAMA_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=llama3.2
-      - ROUND_DURATION_MS=300000
-      - ZERO_ROUND_DURATION_MS=300000
-      - DEPLOYMENTS_PATH=/contracts/deployments/localhost.json
+  # Pimlico Alto: jedna usługa RPC (eth_sendUserOperation / estymacje). Nazwa `paymaster` to tylko alias serwisu — to nie jest kontrakt on-chain.
+  paymaster:
+    image: ghcr.io/pimlicolabs/alto:latest
+    entrypoint:
+      - /bin/sh
+      - -lc
+    command:
+      - |
+        EP=""
+        while [ -z "$$EP" ]; do
+          if [ -f /contracts/deployments/localhost.json ]; then
+            EP=$$(node -e "const fs=require('fs');const p='/contracts/deployments/localhost.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));process.stdout.write((j.contracts && j.contracts.EntryPoint && j.contracts.EntryPoint.address) || '')")
+          fi
+          if [ -z "$$EP" ]; then
+            echo "Waiting for EntryPoint in /contracts/deployments/localhost.json"
+            sleep 2
+          fi
+        done
+        node src/esm/cli/alto.js run \
+          --entrypoints "$$EP" \
+          --executor-private-keys "${BUNDLER_EXECUTOR_KEY:-0xc87509a1c067bbde78beb793e6fa76530b6382a4c0241e5e4a9ec0a0f44dc0d3}" \
+          --utility-private-key "${BUNDLER_UTILITY_KEY:-0xae6ae8e5ccbfb04590405997ee2d52d2b330726137b875053c36d94e974d162f}" \
+          --rpc-url http://ganache:8545 \
+          --network-name ganache \
+          --host 0.0.0.0 \
+          --port 4337 \
+          --min-balance 0 \
+          --safe-mode false
+    restart: on-failure
     ports:
-      - "4000:4000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: sh -c "npm install && npm run dev"
+      - "4337:4337"
+    volumes:
+      - ./contracts/deployments:/contracts/deployments:ro
     depends_on:
       - ganache
       - hardhat
@@ -53,13 +78,20 @@ services:
     working_dir: /app
     volumes:
       - ./frontend:/app
+      - ./contracts/deployments:/contracts/deployments:ro
     environment:
-      - VITE_BACKEND_URL=http://localhost:4000
       - VITE_CHAIN_ID=1337
       - VITE_RPC_URL=http://localhost:8545
+      - VITE_BUNDLER_URL=/bundler
       - VITE_WALLETCONNECT_PROJECT_ID=demo-project-id
     ports:
       - "3000:3000"
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    command: >
+      sh -c "
+      npm install --legacy-peer-deps &&
+      EP=$$(node -e \"const fs=require('fs');const p='/contracts/deployments/localhost.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));process.stdout.write(j?.contracts?.EntryPoint?.address || '')\") &&
+      if [ -n \"$$EP\" ]; then export VITE_ENTRYPOINT_ADDRESS=$$EP; fi &&
+      npm run dev -- --host 0.0.0.0 --port 3000"
     depends_on:
-      - backend
+      - paymaster
+      - hardhat

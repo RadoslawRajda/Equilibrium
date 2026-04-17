@@ -23,6 +23,35 @@ Gra prowadzi gracza przez nastepujace etapy:
 9. automatyczne lub reczne przejscia rund,
 10. zdarzenia AI Game Master.
 
+## Aktualizacja 2026-04-11: co zostalo zrobione i jak
+
+W tej iteracji domknieto glowny kierunek ADR "on-chain gameplay as source of truth" i przetestowano go.
+
+1. Backend jest read-only i nie ma juz gameplay authority.
+2. Frontend czyta stan i koszty akcji z kontraktow przez warstwe repozytorium.
+3. Kontrakty dostaly seam pod session keys, sponsoring i flow kompatybilny z ERC-4337.
+4. Dodano adapter AI kompatybilny z podejsciem ERC-8004 (agent jako modul, bez twardego zaszycia logiki AI w reguly gry).
+
+Najwazniejsze pliki po zmianie:
+
+1. backend read-only API: [backend/src/app.js](backend/src/app.js)
+2. backend startup: [backend/src/index.js](backend/src/index.js)
+3. frontend repository + testy: [frontend/src/lib/lobbyRepository.ts](frontend/src/lib/lobbyRepository.ts), [frontend/src/lib/lobbyRepository.test.ts](frontend/src/lib/lobbyRepository.test.ts)
+4. frontend utils + testy: [frontend/src/lib/gameUtils.ts](frontend/src/lib/gameUtils.ts), [frontend/src/lib/gameUtils.test.ts](frontend/src/lib/gameUtils.test.ts)
+5. 4337 hooks: [contracts/contracts/AAHooks.sol](contracts/contracts/AAHooks.sol)
+6. ERC-8004 adapters: [contracts/contracts/ERC8004Adapters.sol](contracts/contracts/ERC8004Adapters.sol)
+
+### OpenZeppelin templates i wzorce
+
+Nowe kontrakty adapterowe nie sa juz pisane "od zera" pod ownership i safety. Uzyto gotowych komponentow OpenZeppelin:
+
+1. `Ownable2Step` do bezpieczniejszego przekazywania uprawnien administracyjnych.
+2. `ReentrancyGuard` dla sciezek transferu/sponsoringu.
+3. `ERC165`/`IERC165` do walidacji, ze agent AI implementuje oczekiwany interfejs.
+4. `ERC721` (Ticket) pozostaje oparty o OpenZeppelin template.
+
+To daje bardziej standardowy i audytowalny kod przy zachowaniu modulow pod 4337 i AI.
+
 ## Struktura katalogow
 
 - [backend](backend) - serwer Express + Socket.IO, engine gry off-chain, AI i synchronizacja z kontraktami.
@@ -150,6 +179,9 @@ Backend probuje uzywac Ollama jako silnika AI. Jesli model jest niedostepny, prz
 
 - `VITE_CHAIN_ID` - lokalny chain id, domyslnie `1337`.
 - `VITE_RPC_URL` - local RPC, domyslnie `http://localhost:8545`.
+- `VITE_BUNDLER_URL` - wymagany endpoint bundlera ERC-4337 (eth_sendUserOperation).
+- `VITE_ENTRYPOINT_ADDRESS` - opcjonalny adres EntryPoint; domyslnie EntryPoint v0.7.
+- `VITE_PAYMASTER_URL` - opcjonalny endpoint paymastera (gdy sponsoring gazu jest wlaczony).
 - `VITE_BACKEND_URL` - adres backendu, uzywany przez infrastrukture i integracje.
 - `VITE_WALLETCONNECT_PROJECT_ID` - project id dla WalletConnect.
 

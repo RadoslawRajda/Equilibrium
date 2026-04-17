@@ -323,6 +323,92 @@ describe("GameCore gameplay", function () {
     expect(discoveredTile[4]).to.equal(true);
   });
 
+  it("skips multiple rounds when the timeout is exceeded by more than one interval", async function () {
+    const { gameCore, host } = await setupLobby({ playerCount: 0 });
+    const start = firstTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS);
+    const target = adjacentTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS, start);
+
+    await gameCore.connect(host).pickStartingHex(1, start.hexId, start.q, start.r);
+
+    const roundBeforeTimeout = await gameCore.getLobbyRound(1);
+    expect(roundBeforeTimeout[0]).to.equal(1n);
+
+    await mineSeconds(ROUND_SECONDS * 2 + 5);
+
+    await expect(gameCore.connect(host).discoverHex(1, target.hexId))
+      .to.emit(gameCore, "RoundAdvanced")
+      .and.to.emit(gameCore, "HexDiscovered");
+
+    const roundAfterTimeout = await gameCore.getLobbyRound(1);
+    expect(roundAfterTimeout[0]).to.equal(3n);
+    expect(roundAfterTimeout[3]).to.equal(2n);
+  });
+
+  it("exposes the discovery cost curve from the contract", async function () {
+    const { gameCore, host } = await setupLobby({ playerCount: 0 });
+    const start = firstTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS);
+    const target = adjacentTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS, start);
+
+    await gameCore.connect(host).pickStartingHex(1, start.hexId, start.q, start.r);
+
+    const initialCost = await gameCore.previewDiscoverCost(1, host.address);
+    expect(initialCost[0]).to.equal(40n);
+    expect(initialCost[1]).to.equal(40n);
+    expect(initialCost[2]).to.equal(40n);
+    expect(initialCost[3]).to.equal(40n);
+
+    await gameCore.connect(host).discoverHex(1, target.hexId);
+
+    const afterFirstDiscoverCost = await gameCore.previewDiscoverCost(1, host.address);
+    expect(afterFirstDiscoverCost[0]).to.equal(60n);
+    expect(afterFirstDiscoverCost[1]).to.equal(60n);
+    expect(afterFirstDiscoverCost[2]).to.equal(60n);
+    expect(afterFirstDiscoverCost[3]).to.equal(60n);
+  });
+
+  it("exposes build and upgrade costs from the contract", async function () {
+    const { gameCore } = await deploySystem();
+
+    const buildCost = await gameCore.getBuildCost();
+    expect(buildCost[0]).to.equal(10n);
+    expect(buildCost[1]).to.equal(10n);
+    expect(buildCost[2]).to.equal(10n);
+    expect(buildCost[3]).to.equal(0n);
+    expect(buildCost[4]).to.equal(0n);
+
+    const upgradeCost = await gameCore.getUpgradeCost();
+    expect(upgradeCost[0]).to.equal(30n);
+    expect(upgradeCost[1]).to.equal(0n);
+    expect(upgradeCost[2]).to.equal(30n);
+    expect(upgradeCost[3]).to.equal(30n);
+    expect(upgradeCost[4]).to.equal(0n);
+  });
+
+  it("assigns the configured starting resources to new players", async function () {
+    const { gameCore, host, player1 } = await setupLobby({ playerCount: 1 });
+
+    const hostResources = await gameCore.getPlayerResources(1, host.address);
+    expect(hostResources[0]).to.equal(50n);
+    expect(hostResources[1]).to.equal(50n);
+    expect(hostResources[2]).to.equal(50n);
+    expect(hostResources[3]).to.equal(50n);
+    expect(hostResources[4]).to.equal(100n);
+
+    const playerResources = await gameCore.getPlayerResources(1, player1.address);
+    expect(playerResources[0]).to.equal(50n);
+    expect(playerResources[1]).to.equal(50n);
+    expect(playerResources[2]).to.equal(50n);
+    expect(playerResources[3]).to.equal(50n);
+    expect(playerResources[4]).to.equal(100n);
+  });
+
+  it("exposes the collection energy cost by structure level", async function () {
+    const { gameCore } = await deploySystem();
+
+    expect(await gameCore.previewCollectionEnergyCost(1)).to.equal(10n);
+    expect(await gameCore.previewCollectionEnergyCost(2)).to.equal(20n);
+  });
+
   it("supports unanimous end-round voting and advances the round immediately", async function () {
     const { gameCore, host, player1 } = await setupLobby({ playerCount: 1 });
     const tiles = allTiles(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS);

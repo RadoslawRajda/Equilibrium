@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+
+import "./GameConfig.sol";
 
 contract PlayerState is Ownable {
     struct Resources {
@@ -18,12 +20,12 @@ contract PlayerState is Ownable {
     event PlayerInitialized(address indexed player);
     event ResourcesUpdated(address indexed player, uint256 food, uint256 wood, uint256 stone, uint256 ore, uint256 energy);
 
-    constructor() {}
+    constructor() Ownable(msg.sender) {}
 
     function initPlayer(address player) external onlyOwner {
         require(!initialized[player], "Player already initialized");
         initialized[player] = true;
-        playerResources[player] = Resources(50, 50, 50, 50, 100);
+        (playerResources[player].food, playerResources[player].wood, playerResources[player].stone, playerResources[player].ore, playerResources[player].energy) = GameConfig.startingResources();
         emit PlayerInitialized(player);
     }
 

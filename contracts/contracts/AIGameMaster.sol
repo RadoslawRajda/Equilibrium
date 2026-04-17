@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./ActorAware.sol";
 
-contract AIGameMaster is Ownable {
+contract AIGameMaster is ActorAware {
     struct LoggedEvent {
         string name;
         string payload;
@@ -28,8 +28,9 @@ contract AIGameMaster is Ownable {
     constructor() {}
 
     function logAction(uint256 lobbyId, string calldata kind, string calldata payload) external returns (uint256) {
+        address actor = _actor();
         eventsLog.push(LoggedEvent({name: kind, payload: payload, timestamp: block.timestamp}));
-        emit ActionLogged(lobbyId, msg.sender, kind, payload, block.timestamp);
+        emit ActionLogged(lobbyId, actor, kind, payload, block.timestamp);
         return eventsLog.length - 1;
     }
 

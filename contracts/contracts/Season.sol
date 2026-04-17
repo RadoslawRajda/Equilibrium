@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -11,7 +11,7 @@ contract Season is Ownable {
     event SeasonStarted(uint256 indexed seasonId, uint256 startedAt);
     event NewSeason(uint256 indexed seasonId);
 
-    constructor() {}
+    constructor() Ownable(msg.sender) {}
 
     function startSeason() external onlyOwner {
         require(!started, "Season already started");

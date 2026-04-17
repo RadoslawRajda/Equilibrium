@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, LogOut, Play, TicketX, Wallet } from "lucide-react";
 import type { LobbyState } from "../types";
+import { short } from "../lib/gameUtils";
 
 type Props = {
   address?: string;
@@ -14,8 +15,6 @@ type Props = {
   onBack: () => void;
   onDisconnect: () => void;
 };
-
-const short = (address?: string) => (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "?");
 
 export function LobbyRoom({
   address,

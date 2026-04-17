@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-contract GameCore is Ownable {
+import "./ActorAware.sol";
+import "./GameConfig.sol";
+
+contract GameCore is ActorAware {
     using Strings for uint256;
-
-    uint256 private constant BUILD_FOOD_COST = 10;
-    uint256 private constant BUILD_WOOD_COST = 10;
-    uint256 private constant BUILD_STONE_COST = 10;
-
-    uint256 private constant UPGRADE_FOOD_COST = 30;
-    uint256 private constant UPGRADE_STONE_COST = 30;
-    uint256 private constant UPGRADE_ORE_COST = 30;
 
     enum Status {
         Waiting,
@@ -158,12 +152,7 @@ contract GameCore is Ownable {
     }
 
     function _exploreCost(uint256 ownedCount) internal pure returns (Resources memory cost) {
-        uint256 resourceCost = 40;
-        for (uint256 i = 1; i < ownedCount; i++) {
-            resourceCost = (resourceCost * 3 + 1) / 2;
-        }
-
-        return Resources(resourceCost, resourceCost, resourceCost, resourceCost, 0);
+        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(ownedCount);
     }
 
     function _hasAdjacentOwnedHex(Lobby storage lobby, int256 q, int256 r, address owner) internal view returns (bool) {
@@ -248,46 +237,81 @@ contract GameCore is Ownable {
     }
 
     function _payBuildCost(Player storage player) internal {
-        require(player.resources.food >= BUILD_FOOD_COST, "Not enough food");
-        require(player.resources.wood >= BUILD_WOOD_COST, "Not enough wood");
-        require(player.resources.stone >= BUILD_STONE_COST, "Not enough stone");
-        player.resources.food -= BUILD_FOOD_COST;
-        player.resources.wood -= BUILD_WOOD_COST;
-        player.resources.stone -= BUILD_STONE_COST;
+        (uint256 foodCost, uint256 woodCost, uint256 stoneCost,,) = GameConfig.buildCost();
+        require(player.resources.food >= foodCost, "Not enough food");
+        require(player.resources.wood >= woodCost, "Not enough wood");
+        require(player.resources.stone >= stoneCost, "Not enough stone");
+        player.resources.food -= foodCost;
+        player.resources.wood -= woodCost;
+        player.resources.stone -= stoneCost;
     }
 
     function _payUpgradeCost(Player storage player) internal {
-        require(player.resources.food >= UPGRADE_FOOD_COST, "Not enough food");
-        require(player.resources.stone >= UPGRADE_STONE_COST, "Not enough stone");
-        require(player.resources.ore >= UPGRADE_ORE_COST, "Not enough ore");
-        player.resources.food -= UPGRADE_FOOD_COST;
-        player.resources.stone -= UPGRADE_STONE_COST;
-        player.resources.ore -= UPGRADE_ORE_COST;
+        (uint256 foodCost,, uint256 stoneCost, uint256 oreCost,) = GameConfig.upgradeCost();
+        require(player.resources.food >= foodCost, "Not enough food");
+        require(player.resources.stone >= stoneCost, "Not enough stone");
+        require(player.resources.ore >= oreCost, "Not enough ore");
+        player.resources.food -= foodCost;
+        player.resources.stone -= stoneCost;
+        player.resources.ore -= oreCost;
+    }
+
+    function getBuildCost() external pure returns (Resources memory) {
+        (Resources memory cost) = Resources(0, 0, 0, 0, 0);
+        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.buildCost();
+        return cost;
+    }
+
+    function getUpgradeCost() external pure returns (Resources memory) {
+        (Resources memory cost) = Resources(0, 0, 0, 0, 0);
+        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.upgradeCost();
+        return cost;
+    }
+
+    function previewDiscoverCost(uint256 lobbyId, address playerAddress) external view returns (Resources memory) {
+        Lobby storage lobby = lobbies[lobbyId];
+        (Resources memory cost) = Resources(0, 0, 0, 0, 0);
+        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(lobby.playerState[playerAddress].ownedHexCount);
+        return cost;
+    }
+
+    function previewCollectionEnergyCost(uint8 structureLevel) external pure returns (uint256) {
+        return GameConfig.collectionEnergyCost(structureLevel);
+    }
+
+    function _startingResources() internal pure returns (Resources memory startingResources) {
+        (startingResources.food, startingResources.wood, startingResources.stone, startingResources.ore, startingResources.energy) = GameConfig.startingResources();
+    }
+
+    function _createPlayerState() internal pure returns (Player memory) {
+        return Player({exists: true, hasTicket: true, alive: true, bankruptRounds: 0, ownedHexCount: 0, resources: _startingResources()});
     }
 
     function bootstrapLobby(uint256 lobbyId, address host, uint256 mapSeed, uint8 mapRadius) external {
         Lobby storage lobby = lobbies[lobbyId];
+        address actor = _actor();
         require(lobby.host == address(0), "Lobby exists");
-        require(msg.sender == host, "Only host");
+        require(actor == host, "Only host");
         lobby.host = host;
         lobby.status = Status.Waiting;
         lobby.mapSeed = mapSeed;
         lobby.mapRadius = mapRadius;
         _initializeMap(lobby);
         lobby.players.push(host);
-        lobby.playerState[host] = Player({exists: true, hasTicket: true, alive: true, bankruptRounds: 0, ownedHexCount: 0, resources: Resources(50, 50, 50, 50, 100)});
+        lobby.playerState[host] = _createPlayerState();
         lobbyCount += 1;
         emit LobbyBootstrapped(lobbyId, host, lobby.mapSeed, lobby.mapRadius);
     }
 
     function startGame(uint256 lobbyId, uint256 zeroRoundSeconds, uint256 roundSeconds) external {
         Lobby storage lobby = lobbies[lobbyId];
+        address actor = _actor();
         if (lobby.host == address(0)) {
-            lobby.host = msg.sender;
-            lobby.players.push(msg.sender);
-            lobby.playerState[msg.sender] = Player({exists: true, hasTicket: true, alive: true, bankruptRounds: 0, ownedHexCount: 0, resources: Resources(50, 50, 50, 50, 100)});
+            lobby.host = actor;
+            lobby.players.push(actor);
+            lobby.playerState[actor] = _createPlayerState();
         }
-        require(msg.sender == lobby.host, "Only host");
+        require(actor == lobby.host, "Only host");
         require(lobby.status == Status.Waiting, "Already started");
         lobby.status = Status.ZeroRound;
         lobby.roundStartedAt = block.timestamp;
@@ -301,18 +325,19 @@ contract GameCore is Ownable {
     function joinLobby(uint256 lobbyId) external {
         Lobby storage lobby = lobbies[lobbyId];
         require(lobby.host != address(0), "Lobby not found");
-        address player = msg.sender;
+        address player = _actor();
         if (!lobby.playerState[player].exists) {
             lobby.players.push(player);
-            lobby.playerState[player] = Player({exists: true, hasTicket: true, alive: true, bankruptRounds: 0, ownedHexCount: 0, resources: Resources(50, 50, 50, 50, 100)});
+            lobby.playerState[player] = _createPlayerState();
         }
     }
 
     function pickStartingHex(uint256 lobbyId, string calldata hexId, int256 q, int256 r) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address player = _actor();
         require(lobby.status == Status.ZeroRound, "Not zero round");
-        require(!lobby.zeroRoundPicked[msg.sender], "Starting hex already chosen");
+        require(!lobby.zeroRoundPicked[player], "Starting hex already chosen");
         require(_isWithinRadius(q, r, lobby.mapRadius), "Hex outside map");
         bytes32 key = keccak256(bytes(hexId));
         HexTile storage tile = lobby.hexes[key];
@@ -327,11 +352,11 @@ contract GameCore is Ownable {
             require(tile.biome == expectedBiome, "Biome mismatch");
         }
         require(tile.owner == address(0), "Hex already owned");
-        tile.owner = msg.sender;
+        tile.owner = player;
         tile.discovered = true;
-        lobby.playerState[msg.sender].ownedHexCount += 1;
-        lobby.zeroRoundPicked[msg.sender] = true;
-        emit HexPicked(lobbyId, msg.sender, hexId);
+        lobby.playerState[player].ownedHexCount += 1;
+        lobby.zeroRoundPicked[player] = true;
+        emit HexPicked(lobbyId, player, hexId);
 
         if (_allPlayersPicked(lobby)) {
             _advanceRound(lobbyId, lobby.roundDurationSeconds);
@@ -350,16 +375,18 @@ contract GameCore is Ownable {
     function discoverHex(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         require(lobby.status == Status.Running, "Game not running");
 
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
-        Player storage player = lobby.playerState[msg.sender];
+        Player storage player = lobby.playerState[playerAddress];
         require(player.exists && player.alive, "Player not active");
         require(tile.owner == address(0), "Hex occupied");
         require(player.ownedHexCount > 0, "No owned hexes");
-        require(_hasAdjacentOwnedHex(lobby, tile.q, tile.r, msg.sender), "Must be adjacent");
+        require(_hasAdjacentOwnedHex(lobby, tile.q, tile.r, playerAddress), "Must be adjacent");
 
-        Resources memory cost = _exploreCost(player.ownedHexCount);
+        Resources memory cost;
+        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(player.ownedHexCount);
         require(player.resources.food >= cost.food, "Not enough resources for discovery");
         require(player.resources.wood >= cost.wood, "Not enough resources for discovery");
         require(player.resources.stone >= cost.stone, "Not enough resources for discovery");
@@ -370,59 +397,63 @@ contract GameCore is Ownable {
         player.resources.stone -= cost.stone;
         player.resources.ore -= cost.ore;
 
-        tile.owner = msg.sender;
+        tile.owner = playerAddress;
         tile.discovered = true;
         player.ownedHexCount += 1;
 
-        emit HexDiscovered(lobbyId, msg.sender, hexId);
+        emit HexDiscovered(lobbyId, playerAddress, hexId);
     }
 
     function buildStructure(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
-        Player storage player = lobby.playerState[msg.sender];
-        require(tile.owner == msg.sender, "Not owner");
+        Player storage player = lobby.playerState[playerAddress];
+        require(tile.owner == playerAddress, "Not owner");
         require(!tile.structure.exists, "Structure exists");
         _payBuildCost(player);
-        tile.structure = Structure({owner: msg.sender, level: 1, exists: true, builtAtRound: lobby.roundIndex, collectedAtRound: 0});
-        emit StructureBuilt(lobbyId, msg.sender, hexId, 1);
+        tile.structure = Structure({owner: playerAddress, level: 1, exists: true, builtAtRound: lobby.roundIndex, collectedAtRound: 0});
+        emit StructureBuilt(lobbyId, playerAddress, hexId, 1);
     }
 
     function upgradeStructure(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
-        Player storage player = lobby.playerState[msg.sender];
-        require(tile.owner == msg.sender, "Not owner");
+        Player storage player = lobby.playerState[playerAddress];
+        require(tile.owner == playerAddress, "Not owner");
         require(tile.structure.exists, "No structure");
         require(tile.structure.level == 1, "Already max");
         _payUpgradeCost(player);
         tile.structure.level = 2;
-        emit StructureUpgraded(lobbyId, msg.sender, hexId, 2);
+        emit StructureUpgraded(lobbyId, playerAddress, hexId, 2);
     }
 
     function destroyStructure(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
-        require(tile.owner == msg.sender, "Not owner");
+        require(tile.owner == playerAddress, "Not owner");
         require(tile.structure.exists, "No structure");
         tile.structure = Structure({owner: address(0), level: 0, exists: false, builtAtRound: 0, collectedAtRound: 0});
-        emit StructureDestroyed(lobbyId, msg.sender, hexId);
+        emit StructureDestroyed(lobbyId, playerAddress, hexId);
     }
 
     function collect(uint256 lobbyId, string calldata hexId, uint256 amount) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
-        require(tile.owner == msg.sender, "Not owner");
+        require(tile.owner == playerAddress, "Not owner");
         require(tile.structure.exists, "No structure");
         require(tile.structure.builtAtRound < lobby.roundIndex, "Production starts next round");
         require(tile.structure.collectedAtRound != lobby.roundIndex, "Already collected this round");
         tile.structure.collectedAtRound = lobby.roundIndex;
-        Player storage player = lobby.playerState[msg.sender];
-        uint256 energyCost = tile.structure.level == 1 ? 10 : 20;
+        Player storage player = lobby.playerState[playerAddress];
+        uint256 energyCost = GameConfig.collectionEnergyCost(tile.structure.level);
         require(player.resources.energy >= energyCost, "Not enough energy");
         player.resources.energy -= energyCost;
         string memory resourceKey = _resourceKeyForBiome(tile.biome);
@@ -430,14 +461,15 @@ contract GameCore is Ownable {
         else if (keccak256(bytes(resourceKey)) == keccak256(bytes("wood"))) player.resources.wood += amount;
         else if (keccak256(bytes(resourceKey)) == keccak256(bytes("stone"))) player.resources.stone += amount;
         else if (keccak256(bytes(resourceKey)) == keccak256(bytes("ore"))) player.resources.ore += amount;
-        emit ResourcesCollected(lobbyId, msg.sender, hexId, resourceKey, amount);
+        emit ResourcesCollected(lobbyId, playerAddress, hexId, resourceKey, amount);
     }
 
     function createTrade(uint256 lobbyId, address taker, Resources calldata offer, Resources calldata request, uint256 expiryRounds) external returns (uint256) {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         lobby.trades.push(TradeOffer({
-            maker: msg.sender,
+            maker: playerAddress,
             taker: taker,
             exists: true,
             accepted: false,
@@ -447,19 +479,20 @@ contract GameCore is Ownable {
             request: request
         }));
         uint256 tradeId = lobby.trades.length - 1;
-        emit TradeCreated(lobbyId, tradeId, msg.sender, taker);
+        emit TradeCreated(lobbyId, tradeId, playerAddress, taker);
         return tradeId;
     }
 
     function acceptTrade(uint256 lobbyId, uint256 tradeId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         TradeOffer storage trade = lobby.trades[tradeId];
         require(trade.exists, "Trade missing");
         require(!trade.accepted, "Trade accepted");
-        require(trade.taker == address(0) || trade.taker == msg.sender, "Not target");
+        require(trade.taker == address(0) || trade.taker == playerAddress, "Not target");
         trade.accepted = true;
-        emit TradeAccepted(lobbyId, tradeId, msg.sender);
+        emit TradeAccepted(lobbyId, tradeId, playerAddress);
     }
 
     function createProposal(uint256 lobbyId, string calldata title, string calldata effectKey, uint256 closeRound) external returns (uint256) {
@@ -483,12 +516,13 @@ contract GameCore is Ownable {
     function vote(uint256 lobbyId, uint256 proposalId, bool support) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        address playerAddress = _actor();
         Proposal storage proposal = lobby.proposals[proposalId];
         require(lobby.status == Status.Running, "Round not running");
         require(!proposal.resolved, "Resolved");
         if (support) proposal.yesVotes += 1;
         else proposal.noVotes += 1;
-        emit ProposalVoted(lobbyId, proposalId, msg.sender, support);
+        emit ProposalVoted(lobbyId, proposalId, playerAddress, support);
 
         if (
             keccak256(bytes(proposal.effectKey)) == keccak256(bytes("__END_ROUND__")) &&
@@ -498,7 +532,7 @@ contract GameCore is Ownable {
             proposal.resolved = true;
             proposal.passed = true;
             emit ProposalResolved(lobbyId, proposalId, true);
-            _advanceRound(lobbyId, 300);
+            _advanceRound(lobbyId, GameConfig.endRoundAdvanceSeconds());
         }
     }
 

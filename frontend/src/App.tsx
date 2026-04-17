@@ -3,26 +3,38 @@ import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
 import { ArrowRightLeft, CheckCircle2, Hammer, Leaf, Sparkles, Vote } from "lucide-react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { useAccount, useConnect, useDisconnect, usePublicClient, useWriteContract } from "wagmi";
-import { encodePacked, formatEther, keccak256, parseEther } from "viem";
-import deployments from "./deployments/localhost.json";
+import { useAccount, useConnect, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
+import { createPublicClient, encodeFunctionData, formatEther, http, parseEther } from "viem";
+import { entryPoint08Address } from "viem/account-abstraction";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import abi from "./abi/localhost.json";
 import { HexMap } from "./components/HexMap";
 import { Lobby } from "./components/Lobby";
 import { LobbyRoom } from "./components/LobbyRoom";
 import { ResourcePanel } from "./components/ResourcePanel";
-import type { HexTile, LobbyState, ResourceKey } from "./types";
-
-type LobbySummary = {
-  id: string;
-  name: string;
-  status: string;
-  playerCount: number;
-  host: string;
-  prizePool: string;
-};
+import { localGanache } from "./lib/wallet";
+import {
+  ActionCosts,
+  formatCost,
+  generateMapSeed,
+  isAdjacentToOwnedHex,
+  short,
+  type HexTile,
+  type LobbyState,
+  type ResourceKey
+} from "./lib/gameUtils";
+import { LobbyRepository, type LobbySummary } from "./lib/lobbyRepository";
 
 type ContractMeta = {
   contracts: {
+    EntryPoint?: {
+      address: `0x${string}`;
+      abi: any[];
+    };
+    SimpleAccountFactory?: {
+      address: `0x${string}`;
+      abi: any[];
+    };
     LobbyManager: {
       address: `0x${string}`;
       abi: any[];
@@ -35,117 +47,18 @@ type ContractMeta = {
       address: `0x${string}`;
       abi: any[];
     };
+    LobbySessionPaymaster?: {
+      address: `0x${string}`;
+      abi: any[];
+    };
   };
 };
 
-const short = (address?: string) => (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "?");
-const BIOME_NAMES = ["Plains", "Forest", "Mountains", "Desert"] as const;
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
-const generateMapSeed = () => {
-  const values = new Uint32Array(4);
-  crypto.getRandomValues(values);
-  const entropy = values.reduce((accumulator, value) => (accumulator << 32n) | BigInt(value), 0n);
-  return BigInt(keccak256(encodePacked(["uint256", "uint256"], [entropy, BigInt(Date.now())])));
-};
-const hexId = (q: number, r: number) => `${q},${r}`;
-const zeroAddress = "0x0000000000000000000000000000000000000000";
-const hexDirections = [
-  [1, 0],
-  [1, -1],
-  [0, -1],
-  [-1, 0],
-  [-1, 1],
-  [0, 1]
-] as const;
-const biomeForCoord = (seed: bigint, q: number, r: number): HexTile["biome"] => {
-  const hash = keccak256(encodePacked(["uint256", "int256", "int256"], [seed, BigInt(q), BigInt(r)]));
-  const biomeIndex = Number(BigInt(hash) % 4n);
-  return BIOME_NAMES[biomeIndex];
-};
-const generateLocalMap = (seed: bigint, radius: number): HexTile[] => {
-  const hexes: HexTile[] = [];
-  for (let q = -radius; q <= radius; q += 1) {
-    const r1 = Math.max(-radius, -q - radius);
-    const r2 = Math.min(radius, -q + radius);
-    for (let r = r1; r <= r2; r += 1) {
-      hexes.push({
-        id: hexId(q, r),
-        q,
-        r,
-        biome: biomeForCoord(seed, q, r),
-        owner: null,
-        discoveredBy: [],
-        structure: null
-      });
-    }
-  }
-  return hexes;
-};
-const isAdjacent = (a: HexTile, b: HexTile) => hexDirections.some(([dq, dr]) => a.q + dq === b.q && a.r + dr === b.r);
-const isAdjacentToOwnedHex = (hexes: HexTile[], target: HexTile, owner?: string) => {
-  if (!owner) return false;
-  return hexes.some((hex) => hex.owner?.toLowerCase() === owner.toLowerCase() && isAdjacent(hex, target));
-};
-const getExploreCost = (ownedCount: number) => {
-  let resourceCost = 40;
-  for (let index = 1; index < ownedCount; index += 1) {
-    resourceCost = Math.round(resourceCost * 1.5);
-  }
-
-  return { food: resourceCost, wood: resourceCost, stone: resourceCost, ore: resourceCost };
-};
-const formatCost = (cost: { food: number; wood?: number; stone?: number; ore?: number }) => {
-  const parts = [
-    `food ${cost.food}`,
-    cost.wood !== undefined ? `wood ${cost.wood}` : null,
-    cost.stone !== undefined ? `stone ${cost.stone}` : null,
-    cost.ore !== undefined ? `ore ${cost.ore}` : null
-  ].filter(Boolean);
-
-  return parts.join(" / ");
-};
-const BUILD_COST = { food: 10, wood: 10, stone: 10 };
-const UPGRADE_COST = { food: 30, stone: 30, ore: 30 };
-
-const managerStatusToLabel = (status: number) => {
-  switch (status) {
-    case 0:
-      return "open";
-    case 1:
-      return "active";
-    case 2:
-      return "completed";
-    case 3:
-      return "cancelled";
-    default:
-      return "open";
-  }
-};
-
-const gameStatusToLabel = (status: number) => {
-  switch (status) {
-    case 1:
-      return "zero-round";
-    case 2:
-      return "running";
-    default:
-      return "waiting";
-  }
-};
-
-const normalizeOwner = (value?: string | null) => (value && value !== zeroAddress ? value : null);
-
-const emptyResources = () => ({ food: 0, wood: 0, stone: 0, ore: 0, energy: 0 });
-
-const buildPlayerState = (address: string, resources = emptyResources()) => ({
-  address,
-  nickname: short(address),
-  hasTicket: true,
-  bankruptRounds: 0,
-  alive: true,
-  resources
-});
-
+const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const CREATE_LOBBY_SPONSOR = parseEther("0.01");
+const BUY_TICKET_SPONSOR = parseEther("0.005");
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const VOTE_PRESETS = [
   {
     id: "foodBoost",
@@ -173,248 +86,13 @@ const VOTE_PRESETS = [
   }
 ] as const;
 
-type ChainReadContext = {
-  publicClient: any;
-  lobbyManagerAddress?: `0x${string}`;
-  lobbyManagerAbi?: any[];
-  gameCoreAddress?: `0x${string}`;
-  gameCoreAbi?: any[];
-  viewerAddress?: string;
-  localHexOverrides?: Map<string, { owner: string; discoveredBy: string[]; structure: LobbyState["mapHexes"][number]["structure"] }>;
-};
-
-async function loadLobbySummariesFromChain({ publicClient, lobbyManagerAddress, lobbyManagerAbi }: ChainReadContext): Promise<LobbySummary[]> {
-  if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi) return [];
-
-  const lobbyCount = Number(await publicClient.readContract({
-    address: lobbyManagerAddress,
-    abi: lobbyManagerAbi,
-    functionName: "getLobbyCount"
-  } as any));
-
-  const summaries = await Promise.all(
-    Array.from({ length: lobbyCount }, async (_, index) => {
-      const lobbyId = index + 1;
-      try {
-        const lobby = await publicClient.readContract({
-          address: lobbyManagerAddress,
-          abi: lobbyManagerAbi,
-          functionName: "getLobby",
-          args: [BigInt(lobbyId)]
-        } as any);
-
-        const [host, name, , status, prizePool, playerCount] = lobby as [string, string, bigint, bigint, bigint, bigint, string];
-        return {
-          id: String(lobbyId),
-          name,
-          status: managerStatusToLabel(Number(status)),
-          playerCount: Number(playerCount),
-          host,
-          prizePool: formatEther(prizePool)
-        } satisfies LobbySummary;
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  return summaries.filter((summary): summary is LobbySummary => summary !== null);
-}
-
-async function loadLobbyStateFromChain(
-  lobbyId: string,
-  context: ChainReadContext
-): Promise<{ lobby: LobbyState; mapConfig: { seed: string; radius: number } | null } | null> {
-  const { publicClient, lobbyManagerAddress, lobbyManagerAbi, gameCoreAddress, gameCoreAbi, viewerAddress, localHexOverrides } = context;
-
-  if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi || !gameCoreAddress || !gameCoreAbi) {
-    return null;
-  }
-
-  try {
-    const [lobbyData, playerAddresses, roundData, mapConfig] = await Promise.all([
-      publicClient.readContract({
-        address: lobbyManagerAddress,
-        abi: lobbyManagerAbi,
-        functionName: "getLobby",
-        args: [BigInt(lobbyId)]
-      } as any),
-      publicClient.readContract({
-        address: lobbyManagerAddress,
-        abi: lobbyManagerAbi,
-        functionName: "getLobbyPlayers",
-        args: [BigInt(lobbyId)]
-      } as any),
-      publicClient.readContract({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
-        functionName: "getLobbyRound",
-        args: [BigInt(lobbyId)]
-      } as any).catch(() => null),
-      publicClient.readContract({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
-        functionName: "getMapConfig",
-        args: [BigInt(lobbyId)]
-      } as any).catch(() => null)
-    ]);
-
-    const [host, name, , managerStatus, prizePool] = lobbyData as [string, string, bigint, bigint, bigint, bigint, string];
-    const playerAddressList = playerAddresses as string[];
-    const gameStatus = roundData ? Number((roundData as any)[3]) : null;
-    const rounds = roundData
-      ? {
-          index: Number((roundData as any)[0]),
-          startedAt: Number((roundData as any)[4] ?? 0) || null,
-          durationSeconds: Number((roundData as any)[5] ?? 0) || null,
-          nextRoundAt: Number((roundData as any)[1] ?? 0) || null,
-          zeroRoundEndsAt: Number((roundData as any)[2] ?? 0) || null
-        }
-      : {
-          index: 0,
-          startedAt: null,
-          durationSeconds: null,
-          nextRoundAt: null,
-          zeroRoundEndsAt: null
-        };
-
-    const status = gameStatus !== null ? gameStatusToLabel(gameStatus) : "waiting";
-
-    const playerResources = viewerAddress
-      ? await publicClient.readContract({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
-          functionName: "getPlayerResources",
-          args: [BigInt(lobbyId), viewerAddress]
-        } as any).catch(() => null)
-      : null;
-
-    const players = playerAddressList.map((playerAddress) => {
-      const isViewer = viewerAddress?.toLowerCase() === playerAddress.toLowerCase();
-      return buildPlayerState(playerAddress, isViewer && playerResources
-        ? {
-            food: Number((playerResources as any)[0]),
-            wood: Number((playerResources as any)[1]),
-            stone: Number((playerResources as any)[2]),
-            ore: Number((playerResources as any)[3]),
-            energy: Number((playerResources as any)[4])
-          }
-        : emptyResources());
-    });
-
-    let mapConfigState: { seed: string; radius: number } | null = null;
-    const mapHexes: HexTile[] = [];
-    if (mapConfig) {
-      const seed = BigInt((mapConfig as any)[0]);
-      const radius = Number((mapConfig as any)[1]);
-      mapConfigState = { seed: seed.toString(), radius };
-      const localLayout = generateLocalMap(seed, radius);
-      const tileContracts = localLayout.map((tile) => ({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
-        functionName: "getHexTile",
-        args: [BigInt(lobbyId), tile.id]
-      }));
-
-      let tileStatesRaw: any[] | null = null;
-      try {
-        tileStatesRaw = await publicClient.multicall({
-          contracts: tileContracts as any,
-          allowFailure: true
-        } as any);
-      } catch {
-        tileStatesRaw = null;
-      }
-
-      const tileStates = tileStatesRaw
-        ? await Promise.all(
-            tileStatesRaw.map(async (entry: any, index: number) => {
-              if (entry?.status === "success") {
-                return entry.result;
-              }
-
-              try {
-                return await publicClient.readContract({
-                  address: gameCoreAddress,
-                  abi: gameCoreAbi,
-                  functionName: "getHexTile",
-                  args: [BigInt(lobbyId), localLayout[index].id]
-                } as any);
-              } catch {
-                return null;
-              }
-            })
-          )
-        : await Promise.all(
-            localLayout.map((tile) =>
-              publicClient.readContract({
-                address: gameCoreAddress,
-                abi: gameCoreAbi,
-                functionName: "getHexTile",
-                args: [BigInt(lobbyId), tile.id]
-              } as any).catch(() => null)
-            )
-          );
-
-      localLayout.forEach((tile, index) => {
-        const tileState = tileStates[index] as any;
-        const override = localHexOverrides?.get(`${lobbyId}:${tile.id}`);
-        const owner = override?.owner ?? normalizeOwner(tileState?.[3] ?? tile.owner);
-        const discoveredBy = override?.discoveredBy ?? (tileState?.[4] || owner ? [owner ?? viewerAddress ?? ""] : []);
-        const structureExists = override?.structure !== undefined ? override.structure !== null : Boolean(tileState?.[5]);
-        const structure = override?.structure !== undefined
-          ? override.structure
-          : structureExists
-            ? {
-                level: Number(tileState?.[6]) as 1 | 2,
-                collectedAtRound: Number(tileState?.[8]) === 0 ? null : Number(tileState?.[8]),
-                builtAtRound: Number(tileState?.[7])
-              }
-            : null;
-
-        mapHexes.push({
-          ...tile,
-          owner,
-          discoveredBy,
-          structure
-        });
-      });
-    }
-
-    const me = players.find((player) => viewerAddress && player.address.toLowerCase() === viewerAddress.toLowerCase()) ?? null;
-
-    return {
-      lobby: {
-        id: lobbyId,
-        name,
-        host,
-        status,
-        rounds,
-        pollution: 0,
-        players,
-        me,
-        mapHexes,
-        activeEffects: [],
-        globalVotes: [],
-        barterOffers: [],
-        logs: [],
-        pendingEarthquake: null,
-        prizePool: formatEther(prizePool)
-      },
-      mapConfig: mapConfigState
-    };
-  } catch (error) {
-    console.error(`Failed to load lobby ${lobbyId} from chain`, error);
-    return null;
-  }
-}
-
 function AppPage() {
   const navigate = useNavigate();
   const { lobbyId } = useParams<{ lobbyId: string }>();
   const [lobbies, setLobbies] = useState<LobbySummary[]>([]);
   const [activeLobby, setActiveLobby] = useState<LobbyState | null>(null);
   const [activeMapConfig, setActiveMapConfig] = useState<{ seed: string; radius: number } | null>(null);
+  const [activeActionCosts, setActiveActionCosts] = useState<ActionCosts | null>(null);
   const [selectedHex, setSelectedHex] = useState<string | undefined>();
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
@@ -443,9 +121,10 @@ function AppPage() {
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const publicClient = usePublicClient();
-  const { writeContractAsync } = useWriteContract();
+  const { data: walletClient } = useWalletClient();
 
-  const contracts = deployments as ContractMeta;
+  const [contractsMeta, setContractsMeta] = useState<ContractMeta>(abi as ContractMeta);
+  const contracts = contractsMeta;
 
   useEffect(() => {
     const tick = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
@@ -457,30 +136,281 @@ function AppPage() {
   const gameCoreAddress = contracts?.contracts?.GameCore?.address as `0x${string}` | undefined;
   const gameCoreAbi = contracts?.contracts?.GameCore?.abi;
 
-  const syncLobbiesFromChain = async () => {
-    const nextLobbies = await loadLobbySummariesFromChain({
-      publicClient,
-      lobbyManagerAddress,
-      lobbyManagerAbi
+  const lobbyRepository = useMemo(
+    () =>
+      new LobbyRepository({
+        publicClient,
+        lobbyManagerAddress,
+        lobbyManagerAbi,
+        gameCoreAddress,
+        gameCoreAbi,
+        viewerAddress: address,
+        localHexOverrides: localHexOverridesRef.current
+      }),
+    [address, gameCoreAbi, gameCoreAddress, lobbyManagerAbi, lobbyManagerAddress, publicClient]
+  );
+
+  const aaConfig = useMemo(() => {
+    const rpcUrl = import.meta.env.VITE_RPC_URL || "http://localhost:8545";
+    const bundlerUrl = import.meta.env.VITE_BUNDLER_URL || "";
+    const fromDeployments = contracts?.contracts?.EntryPoint?.address as `0x${string}` | undefined;
+    const fromEnv = import.meta.env.VITE_ENTRYPOINT_ADDRESS as `0x${string}` | undefined;
+    const nz = (a: string | undefined) => Boolean(a && a.toLowerCase() !== ZERO_ADDRESS);
+    /** Bundlers (e.g. Alto) detect EP v0.8 by address prefix 0x433708…; fall back to viem canonical. */
+    const entryPointAddress =
+      (nz(fromDeployments) ? fromDeployments : undefined) ||
+      (nz(fromEnv) ? fromEnv : undefined) ||
+      entryPoint08Address;
+
+    const lobbySessionPaymasterAddress = contracts?.contracts?.LobbySessionPaymaster?.address as
+      | `0x${string}`
+      | undefined;
+
+    return {
+      rpcUrl,
+      bundlerUrl,
+      entryPointAddress,
+      lobbySessionPaymasterAddress
+    };
+  }, [contracts]);
+
+  const aaClientRef = useRef<{
+    owner?: string;
+    lobbyId?: string;
+    paymaster?: `0x${string}` | "";
+    client?: any;
+    sessionAccountAddress?: `0x${string}`;
+  }>({});
+
+  const sessionStorageKey = (targetLobbyId: string, actor: string) =>
+    `cryptocatan:session:${localGanache.id}:${targetLobbyId}:${actor.toLowerCase()}`;
+
+  const isZeroAddress = (value: string) => value.toLowerCase() === ZERO_ADDRESS;
+
+  const assertSessionAddress = (value: string | undefined | null) => {
+    if (!value || isZeroAddress(value)) {
+      throw new Error("Unable to derive a valid session key address");
+    }
+    return value as `0x${string}`;
+  };
+
+  const resolveSessionAccount = async (privateKey: `0x${string}`) => {
+    const [{ toSimpleSmartAccount }] = await Promise.all([import("permissionless/accounts")]);
+    const executionClient = createPublicClient({
+      chain: localGanache,
+      transport: http(aaConfig.rpcUrl)
     });
+
+    const ownerAccount = privateKeyToAccount(privateKey);
+    const factoryAddress = contracts?.contracts?.SimpleAccountFactory?.address as `0x${string}` | undefined;
+    if (!factoryAddress || isZeroAddress(factoryAddress)) {
+      throw new Error("SimpleAccountFactory address missing from deployments (required for EntryPoint v0.8).");
+    }
+    const factoryDerivedAddress = await executionClient
+      .readContract({
+        address: factoryAddress,
+        abi: [
+          {
+            inputs: [
+              { internalType: "address", name: "owner", type: "address" },
+              { internalType: "uint256", name: "salt", type: "uint256" }
+            ],
+            name: "getAddress",
+            outputs: [{ internalType: "address", name: "", type: "address" }],
+            stateMutability: "view",
+            type: "function"
+          }
+        ] as const,
+        functionName: "getAddress",
+        args: [ownerAccount.address as `0x${string}`, 0n]
+      } as any)
+      .catch(() => undefined);
+
+    const nz = (a: string | undefined | null) => Boolean(a && a.toLowerCase() !== ZERO_ADDRESS);
+    const entryPointAddr =
+      (nz(contracts?.contracts?.EntryPoint?.address)
+        ? (contracts!.contracts!.EntryPoint!.address as `0x${string}`)
+        : undefined) ||
+      (nz(import.meta.env.VITE_ENTRYPOINT_ADDRESS)
+        ? (import.meta.env.VITE_ENTRYPOINT_ADDRESS as `0x${string}`)
+        : undefined) ||
+      entryPoint08Address;
+
+    if (!entryPointAddr || !nz(entryPointAddr)) {
+      throw new Error("EntryPoint address missing. Sync deployments or set VITE_ENTRYPOINT_ADDRESS.");
+    }
+
+    const smartAccount = await toSimpleSmartAccount({
+      client: executionClient as any,
+      owner: ownerAccount,
+      factoryAddress,
+      address: factoryDerivedAddress,
+      entryPoint: {
+        address: entryPointAddr,
+        version: "0.8"
+      }
+    } as any);
+
+    const smartAccountAddress = assertSessionAddress(
+      (smartAccount.address as `0x${string}` | undefined) ??
+        ((await smartAccount.getAddress()) as `0x${string}` | undefined)
+    );
+
+    return { smartAccount, smartAccountAddress };
+  };
+
+  const ensureLobbySession = async (targetLobbyId: string, actor: string) => {
+    const storageKey = sessionStorageKey(targetLobbyId, actor);
+    const existing = localStorage.getItem(storageKey);
+    const privateKey = (existing as `0x${string}` | null) ?? (generatePrivateKey() as `0x${string}`);
+    const resolved = await resolveSessionAccount(privateKey);
+    const smartAccountAddress = resolved.smartAccountAddress;
+
+    if (!existing) {
+      localStorage.setItem(storageKey, privateKey);
+    }
+
+    return {
+      privateKey,
+      smartAccountAddress
+    };
+  };
+
+  const getSmartAccountClient = async (targetLobbyId: string) => {
+    if (!address) {
+      throw new Error("Wallet not connected");
+    }
+    if (!aaConfig.bundlerUrl) {
+      throw new Error("VITE_BUNDLER_URL is required for ERC-4337 mode");
+    }
+
+    const owner = address.toLowerCase();
+    const paymasterTag = (aaConfig.lobbySessionPaymasterAddress &&
+    !isZeroAddress(aaConfig.lobbySessionPaymasterAddress)
+      ? aaConfig.lobbySessionPaymasterAddress
+      : "") as `0x${string}` | "";
+
+    if (
+      aaClientRef.current.owner === owner &&
+      aaClientRef.current.lobbyId === targetLobbyId &&
+      aaClientRef.current.paymaster === paymasterTag &&
+      aaClientRef.current.client
+    ) {
+      if (!aaClientRef.current.sessionAccountAddress) {
+        const cachedAddress = (aaClientRef.current.client?.account?.address as `0x${string}` | undefined) ??
+          ((await aaClientRef.current.client?.account?.getAddress?.()) as `0x${string}` | undefined);
+        if (cachedAddress) {
+          aaClientRef.current.sessionAccountAddress = assertSessionAddress(cachedAddress);
+        }
+      }
+      return aaClientRef.current.client;
+    }
+
+    const [{ createSmartAccountClient }] = await Promise.all([
+      import("permissionless"),
+    ]);
+
+    const storageKey = sessionStorageKey(targetLobbyId, owner);
+    const sessionPrivateKey = localStorage.getItem(storageKey) as `0x${string}` | null;
+    if (!sessionPrivateKey) {
+      throw new Error("No session key for this lobby. Buy ticket/create lobby first.");
+    }
+
+    const executionClient = createPublicClient({
+      chain: localGanache,
+      transport: http(aaConfig.rpcUrl)
+    });
+
+    const { smartAccount: account } = await resolveSessionAccount(sessionPrivateKey);
+    const sessionAccountAddress = ((account.address as `0x${string}` | undefined) ??
+      ((await account.getAddress()) as `0x${string}` | undefined));
+
+    // EntryPoint v0.8: bundlers expect `paymaster` + `paymasterData` (and gas limits filled during estimation).
+    const paymasterMiddleware =
+      paymasterTag !== ""
+        ? {
+            getPaymasterData: async () => ({
+              paymaster: paymasterTag,
+              paymasterData: "0x" as `0x${string}`
+            }),
+            getPaymasterStubData: async () => ({
+              paymaster: paymasterTag,
+              paymasterData: "0x" as `0x${string}`
+            })
+          }
+        : undefined;
+
+    const smartAccountClient = createSmartAccountClient({
+      account,
+      chain: localGanache,
+      client: executionClient as any,
+      bundlerTransport: http(aaConfig.bundlerUrl),
+      ...(paymasterMiddleware ? { paymaster: paymasterMiddleware } : {}),
+      userOperation: {
+        estimateFeesPerGas: async () => {
+          const fees = await executionClient.estimateFeesPerGas();
+          return {
+            maxFeePerGas: fees.maxFeePerGas ?? 0n,
+            maxPriorityFeePerGas: fees.maxPriorityFeePerGas ?? 0n
+          };
+        }
+      }
+    } as any);
+
+    aaClientRef.current = {
+      owner,
+      lobbyId: targetLobbyId,
+      paymaster: paymasterTag,
+      client: smartAccountClient,
+      sessionAccountAddress: sessionAccountAddress ? assertSessionAddress(sessionAccountAddress) : undefined
+    };
+    return smartAccountClient;
+  };
+
+  const sendSessionTransaction = async ({
+    lobbyId,
+    contractAddress,
+    contractAbi,
+    functionName,
+    args,
+    value
+  }: {
+    lobbyId: string;
+    contractAddress: `0x${string}`;
+    contractAbi: any[];
+    functionName: string;
+    args?: any[];
+    value?: bigint;
+  }) => {
+    const smartAccountClient = await getSmartAccountClient(lobbyId);
+    const calldata = encodeFunctionData({
+      abi: contractAbi as any,
+      functionName,
+      args: args ?? []
+    } as any);
+
+    const txHash = await smartAccountClient.sendTransaction({
+      to: contractAddress,
+      data: calldata,
+      value: value ?? 0n
+    });
+
+    return txHash as `0x${string}`;
+  };
+
+  const syncLobbiesFromChain = async () => {
+    const nextLobbies = await lobbyRepository.loadSummaries();
     setLobbies(nextLobbies);
     return nextLobbies;
   };
 
   const syncActiveLobbyFromChain = async (lobbyId: string) => {
-    const hydrated = await loadLobbyStateFromChain(lobbyId, {
-      publicClient,
-      lobbyManagerAddress,
-      lobbyManagerAbi,
-      gameCoreAddress,
-      gameCoreAbi,
-      viewerAddress: address,
-      localHexOverrides: localHexOverridesRef.current
-    });
+    const hydrated = await lobbyRepository.loadLobbyState(lobbyId);
 
     if (!hydrated) return null;
 
     setActiveMapConfig(hydrated.mapConfig);
+    setActiveActionCosts(hydrated.actionCosts);
     setActiveLobby(hydrated.lobby);
     return hydrated.lobby;
   };
@@ -489,6 +419,7 @@ function AppPage() {
     if (!lobbyId) {
       setActiveLobby(null);
       setActiveMapConfig(null);
+      setActiveActionCosts(null);
       setSelectedHex(undefined);
       return;
     }
@@ -496,7 +427,7 @@ function AppPage() {
     syncActiveLobbyFromChain(lobbyId).catch((error) => {
       console.error(`Failed to open lobby ${lobbyId}`, error);
     });
-  }, [address, gameCoreAbi, gameCoreAddress, lobbyId, lobbyManagerAbi, lobbyManagerAddress, publicClient]);
+  }, [lobbyId, lobbyRepository]);
 
   const myTurnInZeroRound = useMemo(() => {
     if (!activeLobby || activeLobby.status !== "zero-round" || !address) return false;
@@ -569,7 +500,7 @@ function AppPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [address, gameCoreAbi, gameCoreAddress, lobbyManagerAbi, lobbyManagerAddress, publicClient]);
+  }, [address, gameCoreAbi, gameCoreAddress, lobbyManagerAbi, lobbyManagerAddress, publicClient, lobbyRepository]);
 
   useEffect(() => {
     let cancelled = false;
@@ -589,7 +520,7 @@ function AppPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [address, gameCoreAbi, gameCoreAddress, lobbyId, lobbyManagerAbi, lobbyManagerAddress, publicClient]);
+  }, [address, gameCoreAbi, gameCoreAddress, lobbyId, lobbyManagerAbi, lobbyManagerAddress, publicClient, lobbyRepository]);
 
   useEffect(() => {
     if (!activeLobby || !address) return;
@@ -619,7 +550,7 @@ function AppPage() {
     setError("");
     setIsCreatingLobby(true);
     try {
-      if (!publicClient) {
+      if (!publicClient || !walletClient) {
         throw new Error("Wallet client unavailable");
       }
 
@@ -630,13 +561,24 @@ function AppPage() {
         abi: lobbyManagerAbi,
         functionName: "getLobbyCount"
       } as any);
-      const createTx = await writeContractAsync({
+
+      const createdLobbyIdHint = Number(lobbyCountBefore) + 1;
+      const session = await ensureLobbySession(String(createdLobbyIdHint), address);
+      const sessionKey = assertSessionAddress(session.smartAccountAddress);
+
+      const createTx = await walletClient.writeContract({
         address: lobbyManagerAddress,
         abi: lobbyManagerAbi,
-        functionName: "createLobby",
+        functionName: "createLobbyWithSession",
         account: address,
-        args: [lobbyName],
-        value: parseEther("0.05") // TICKET_PRICE
+        args: [
+          lobbyName,
+          sessionKey,
+          CREATE_LOBBY_SPONSOR,
+          BigInt(SESSION_TTL_SECONDS),
+          CREATE_LOBBY_SPONSOR
+        ],
+        value: parseEther("0.05")
       } as any);
 
       const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createTx as `0x${string}` });
@@ -651,17 +593,28 @@ function AppPage() {
       } as any);
       const createdLobbyId = Number(lobbyCountAfter);
 
+      if (createdLobbyId !== createdLobbyIdHint) {
+        const actor = address.toLowerCase();
+        const fromKey = sessionStorageKey(String(createdLobbyIdHint), actor);
+        const toKey = sessionStorageKey(String(createdLobbyId), actor);
+        const existingSessionPk = localStorage.getItem(fromKey);
+        if (existingSessionPk) {
+          localStorage.setItem(toKey, existingSessionPk);
+          localStorage.removeItem(fromKey);
+        }
+      }
+
       if (BigInt(lobbyCountAfter as bigint) <= BigInt(lobbyCountBefore as bigint)) {
         throw new Error("Unable to determine created lobby id");
       }
 
-      const bootstrapTx = await writeContractAsync({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
+      const bootstrapTx = await sendSessionTransaction({
+        lobbyId: String(createdLobbyId),
+        contractAddress: gameCoreAddress,
+        contractAbi: gameCoreAbi,
         functionName: "bootstrapLobby",
-        account: address,
         args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
-      } as any);
+      });
 
       const bootstrapReceipt = await publicClient.waitForTransactionReceipt({
         hash: bootstrapTx as `0x${string}`
@@ -715,21 +668,34 @@ function AppPage() {
     if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !gameCoreAddress || !gameCoreAbi || !activeLobby) return;
     setError("");
     try {
-      await writeContractAsync({
+      if (!walletClient) {
+        throw new Error("Wallet client unavailable");
+      }
+
+      const session = await ensureLobbySession(activeLobby.id, address);
+      const sessionKey = assertSessionAddress(session.smartAccountAddress);
+      await walletClient.writeContract({
         address: lobbyManagerAddress,
         abi: lobbyManagerAbi,
-        functionName: "buyTicket",
+        functionName: "buyTicketWithSession",
         account: address,
-        args: [activeLobby.id],
+        args: [
+          BigInt(activeLobby.id),
+          sessionKey,
+          BUY_TICKET_SPONSOR,
+          BigInt(SESSION_TTL_SECONDS),
+          BUY_TICKET_SPONSOR
+        ],
         value: parseEther("0.05")
       } as any);
-      await writeContractAsync({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
+
+      await sendSessionTransaction({
+        lobbyId: activeLobby.id,
+        contractAddress: gameCoreAddress,
+        contractAbi: gameCoreAbi,
         functionName: "joinLobby",
-        account: address,
         args: [BigInt(activeLobby.id)]
-      } as any);
+      });
       confetti({ particleCount: 100, spread: 75, origin: { y: 0.75 } });
       await syncActiveLobbyFromChain(activeLobby.id);
       await syncLobbiesFromChain();
@@ -743,20 +709,34 @@ function AppPage() {
     if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !gameCoreAddress || !gameCoreAbi || !activeLobby) return;
     setError("");
     try {
-      await writeContractAsync({
-        address: lobbyManagerAddress,
-        abi: lobbyManagerAbi,
+      if (!publicClient) {
+        throw new Error("RPC client unavailable");
+      }
+
+      const lobbyStartTx = await sendSessionTransaction({
+        lobbyId: activeLobby.id,
+        contractAddress: lobbyManagerAddress,
+        contractAbi: lobbyManagerAbi,
         functionName: "startGame",
-        account: address,
-        args: [activeLobby.id]
-      } as any);
-      await writeContractAsync({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
+        args: [BigInt(activeLobby.id)]
+      });
+      const lobbyStartReceipt = await publicClient.waitForTransactionReceipt({ hash: lobbyStartTx as `0x${string}` });
+      if (lobbyStartReceipt.status !== "success") {
+        throw new Error("LobbyManager.startGame transaction reverted");
+      }
+
+      const gameStartTx = await sendSessionTransaction({
+        lobbyId: activeLobby.id,
+        contractAddress: gameCoreAddress,
+        contractAbi: gameCoreAbi,
         functionName: "startGame",
-        account: address,
         args: [BigInt(activeLobby.id), BigInt(300), BigInt(300)]
-      } as any);
+      });
+      const gameStartReceipt = await publicClient.waitForTransactionReceipt({ hash: gameStartTx as `0x${string}` });
+      if (gameStartReceipt.status !== "success") {
+        throw new Error("GameCore.startGame transaction reverted");
+      }
+
       const loaded = await syncActiveLobbyFromChain(activeLobby.id);
       if (!loaded) {
         throw new Error("Unable to refresh lobby from chain after start");
@@ -771,13 +751,13 @@ function AppPage() {
     if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !activeLobby) return;
     setError("");
     try {
-      await writeContractAsync({
-        address: lobbyManagerAddress,
-        abi: lobbyManagerAbi,
+      await sendSessionTransaction({
+        lobbyId: activeLobby.id,
+        contractAddress: lobbyManagerAddress,
+        contractAbi: lobbyManagerAbi,
         functionName: "cancelLobby",
-        account: address,
         args: [activeLobby.id]
-      } as any);
+      });
       navigate("/");
       setActiveLobby(null);
       setSelectedHex(undefined);
@@ -820,106 +800,106 @@ function AppPage() {
           };
         });
 
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "pickStartingHex",
-          account: address,
           args: [lobbyId, hex.id, BigInt(hex.q), BigInt(hex.r)]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:discover") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "discoverHex",
-          account: address,
           args: [lobbyId, payload.hexId]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:build") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "buildStructure",
-          account: address,
           args: [lobbyId, payload.hexId ?? selectedForDetails?.id]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:upgrade") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "upgradeStructure",
-          account: address,
           args: [lobbyId, payload.hexId ?? selectedForDetails?.id]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:destroy") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "destroyStructure",
-          account: address,
           args: [lobbyId, payload.hexId ?? selectedForDetails?.id]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:collect") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "collect",
-          account: address,
           args: [lobbyId, payload.hexId ?? selectedForDetails?.id, BigInt(payload.amount || 10)]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "barter:create") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "createTrade",
-          account: address,
           args: [lobbyId, payload.to || "0x0000000000000000000000000000000000000000", payload.offer, payload.request, BigInt(2)]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "barter:accept") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "acceptTrade",
-          account: address,
           args: [lobbyId, BigInt(payload.barterId)]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:create") {
         const effectKey = payload.effect?.special === "__END_ROUND__"
           ? "__END_ROUND__"
           : JSON.stringify(payload.effect || {});
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "createProposal",
-          account: address,
           args: [lobbyId, payload.title, effectKey, BigInt(activeLobby.rounds.index + 3)]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:cast") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "vote",
-          account: address,
           args: [lobbyId, BigInt(payload.voteId), Boolean(payload.support)]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:end-round") {
-        const txHash = await writeContractAsync({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
           functionName: "advanceRound",
-          account: address,
           args: [lobbyId, BigInt(300)]
-        } as any);
+        });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       }
 
@@ -954,18 +934,20 @@ function AppPage() {
   const isSelectedMine = Boolean(selectedForDetails?.owner && address && selectedForDetails.owner.toLowerCase() === address.toLowerCase());
   const hasStructure = Boolean(selectedForDetails?.structure);
   const ownedHexCount = activeLobby?.mapHexes.filter((hex) => hex.owner?.toLowerCase() === address?.toLowerCase()).length ?? 0;
-  const exploreCost = getExploreCost(ownedHexCount || 1);
+  const discoverCost = activeActionCosts?.discover ?? null;
+  const buildCost = activeActionCosts?.build ?? null;
+  const upgradeCost = activeActionCosts?.upgrade ?? null;
   const canDiscoverHere = Boolean(selectedForDetails && activeLobby?.status === "running" && !selectedForDetails.owner && isAdjacentToOwnedHex(activeLobby?.mapHexes ?? [], selectedForDetails, address));
   const canBuildHere = Boolean(selectedForDetails && isSelectedMine && !hasStructure);
   const canUpgradeHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure?.level === 1);
   const canDestroyHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure);
   const canCollectHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure);
   const selectedActionCost = canDiscoverHere
-    ? formatCost(exploreCost)
+    ? discoverCost && formatCost(discoverCost)
     : canBuildHere
-      ? formatCost(BUILD_COST)
+      ? buildCost && formatCost(buildCost)
       : canUpgradeHere
-        ? formatCost(UPGRADE_COST)
+      ? upgradeCost && formatCost(upgradeCost)
         : null;
 
   const walletConnectConnector = connectors.find((c) => c.id === "injected") || connectors[0];
@@ -1092,21 +1074,21 @@ function AppPage() {
         <div className="action-group">
           <h4>Hex Actions</h4>
           <p className="selected-text">
-            {selectedActionCost ? `Cost: ${selectedActionCost}` : "Select a hex to see costs and actions."}
+            {selectedActionCost ? `Cost: ${selectedActionCost}` : activeActionCosts ? "Select a hex to see costs and actions." : "Loading costs from chain..."}
           </p>
           {selectedForDetails && !selectedForDetails.owner && (
             <button onClick={() => action("game:discover", { hexId: activeActionHexId })} disabled={!canDiscoverHere || !activeActionHexId}>
-              <Sparkles size={16} /> Discover / Claim ({formatCost(exploreCost)})
+              <Sparkles size={16} /> Discover / Claim ({discoverCost ? formatCost(discoverCost) : "loading..."})
             </button>
           )}
           {canBuildHere && (
             <button onClick={() => action("game:build", { hexId: activeActionHexId })} disabled={!activeActionHexId}>
-              <Hammer size={16} /> Build lvl1 ({formatCost(BUILD_COST)})
+              <Hammer size={16} /> Build lvl1 ({buildCost ? formatCost(buildCost) : "loading..."})
             </button>
           )}
           {canUpgradeHere && (
             <button onClick={() => action("game:upgrade", { hexId: activeActionHexId })} disabled={!activeActionHexId}>
-              <Leaf size={16} /> Upgrade lvl2 ({formatCost(UPGRADE_COST)})
+              <Leaf size={16} /> Upgrade lvl2 ({upgradeCost ? formatCost(upgradeCost) : "loading..."})
             </button>
           )}
           {canDestroyHere && (

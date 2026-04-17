@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./ActorAware.sol";
 
-contract Voting is Ownable {
+contract Voting is ActorAware {
     struct Proposal {
         string title;
         string effectKey;
@@ -41,17 +41,18 @@ contract Voting is Ownable {
 
     function vote(uint256 proposalId, bool support) external {
         Proposal storage proposal = proposals[proposalId];
+        address voter = _actor();
         require(block.timestamp <= proposal.endTime, "Voting closed");
-        require(!hasVoted[proposalId][msg.sender], "Already voted");
+        require(!hasVoted[proposalId][voter], "Already voted");
 
-        hasVoted[proposalId][msg.sender] = true;
+        hasVoted[proposalId][voter] = true;
         if (support) {
             proposal.yesVotes += 1;
         } else {
             proposal.noVotes += 1;
         }
 
-        emit Voted(proposalId, msg.sender, support);
+        emit Voted(proposalId, voter, support);
     }
 
     function executeProposal(uint256 proposalId) external onlyOwner returns (bool passed) {

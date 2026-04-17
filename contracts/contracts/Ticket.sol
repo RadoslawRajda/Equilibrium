@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract Ticket is ERC721, Ownable {
+import "./ActorAware.sol";
+
+contract Ticket is ERC721, ActorAware {
     uint256 public constant TICKET_PRICE = 0.01 ether;
     uint256 private _nextId = 1;
 
@@ -15,15 +16,16 @@ contract Ticket is ERC721, Ownable {
     constructor() ERC721("EquilibriumTicket", "EQT") {}
 
     function buyTicket() external payable {
-        require(!hasTicket[msg.sender], "Ticket already owned");
+        address buyer = _actor();
+        require(!hasTicket[buyer], "Ticket already owned");
         require(msg.value >= TICKET_PRICE, "Insufficient payment");
 
         uint256 tokenId = _nextId;
         _nextId += 1;
-        hasTicket[msg.sender] = true;
-        _safeMint(msg.sender, tokenId);
+        hasTicket[buyer] = true;
+        _safeMint(buyer, tokenId);
 
-        emit TicketBought(msg.sender, tokenId);
+        emit TicketBought(buyer, tokenId);
     }
 
     function withdraw(address payable to) external onlyOwner {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -24,7 +24,7 @@ contract Structures is Ownable {
     event StructureUpgraded(bytes32 indexed hexId, uint8 level);
     event StructureRemoved(bytes32 indexed hexId);
 
-    constructor() {}
+    constructor() Ownable(msg.sender) {}
 
     function build(bytes32 hexId, address owner, Biome biome) external onlyOwner {
         require(!structures[hexId].exists, "Structure already exists");
