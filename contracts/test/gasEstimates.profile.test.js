@@ -31,9 +31,10 @@ describe("Gas profile (estimateGas) — pessimistic planning", function () {
 
     for (const r of radii) {
       const lm2 = await LobbyManager.deploy();
-      const gc2 = await GameCore.deploy();
       await lm2.waitForDeployment();
+      const gc2 = await GameCore.deploy(await lm2.getAddress());
       await gc2.waitForDeployment();
+      await lm2.setGameCore(await gc2.getAddress());
       await lm2.connect(host).createLobby(`R${r}`, { value: TICKET_PRICE });
       const g = await gc2.connect(host).bootstrapLobby.estimateGas(1n, host.address, seed, r);
       gasByRadius[r] = g;
@@ -59,9 +60,10 @@ describe("Gas profile (estimateGas) — pessimistic planning", function () {
     const LobbyManager = await ethers.getContractFactory("LobbyManager");
     const GameCore = await ethers.getContractFactory("GameCore");
     const lobbyManager = await LobbyManager.deploy();
-    const gameCore = await GameCore.deploy();
     await lobbyManager.waitForDeployment();
+    const gameCore = await GameCore.deploy(await lobbyManager.getAddress());
     await gameCore.waitForDeployment();
+    await lobbyManager.setGameCore(await gameCore.getAddress());
 
     const [host] = await ethers.getSigners();
     const seed = 111222333n;
@@ -70,7 +72,7 @@ describe("Gas profile (estimateGas) — pessimistic planning", function () {
     await lobbyManager.connect(host).createLobby("Play", { value: TICKET_PRICE });
     await gameCore.connect(host).bootstrapLobby(1n, host.address, seed, radius);
     await lobbyManager.connect(host).startGame(1);
-    await gameCore.connect(host).startGame(1, 300, 300);
+    await gameCore.connect(host).startGame(1, 300, 300, await lobbyManager.getAddress());
 
     const center = "0,0";
     const gPick = await gameCore.connect(host).pickStartingHex.estimateGas(1n, center, 0, 0);

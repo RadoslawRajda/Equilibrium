@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { PlusCircle, Wallet } from "lucide-react";
 import { useState } from "react";
+import { formatEther } from "viem";
 
 type LobbySummary = {
   id: string;
@@ -21,6 +22,9 @@ type Props = {
   deployHint?: string | null;
   /** Human-readable ticket price (e.g. from LobbyManager.TICKET_PRICE) */
   ticketPriceLabel?: string;
+  claimableWei?: bigint | null;
+  onClaimLobbyBalance?: () => void;
+  claimPending?: boolean;
 };
 
 export function Lobby({
@@ -31,7 +35,10 @@ export function Lobby({
   onOpen,
   onDisconnect,
   deployHint,
-  ticketPriceLabel = "5"
+  ticketPriceLabel = "5",
+  claimableWei,
+  onClaimLobbyBalance,
+  claimPending = false
 }: Props) {
   const [radius, setRadius] = useState(4);
 
@@ -49,6 +56,22 @@ export function Lobby({
       </div>
 
       {deployHint ? <p className="error-banner">{deployHint}</p> : null}
+
+      {claimableWei != null && claimableWei > 0n && onClaimLobbyBalance ? (
+        <section className="lobby-actions" style={{ flexWrap: "wrap" }}>
+          <p style={{ margin: 0, flex: "1 1 100%" }}>
+            <strong>Lobby contract balance</strong>: {formatEther(claimableWei)} ETH — claim to your wallet.
+          </p>
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            whileHover={{ scale: 1.04 }}
+            onClick={onClaimLobbyBalance}
+            disabled={claimPending}
+          >
+            {claimPending ? "Confirming…" : "Claim ETH"}
+          </motion.button>
+        </section>
+      ) : null}
 
       <section className="lobby-actions">
         <label className="lobby-radius-picker">

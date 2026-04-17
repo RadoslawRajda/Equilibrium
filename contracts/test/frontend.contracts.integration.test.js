@@ -13,8 +13,9 @@ describe("Frontend-contracts integration", function () {
     const lobbyManager = await LobbyManager.deploy();
     await lobbyManager.waitForDeployment();
 
-    const gameCore = await GameCore.deploy();
+    const gameCore = await GameCore.deploy(await lobbyManager.getAddress());
     await gameCore.waitForDeployment();
+    await lobbyManager.setGameCore(await gameCore.getAddress());
 
     const lobbyId = 1n;
     const seed = 777n;
@@ -27,7 +28,7 @@ describe("Frontend-contracts integration", function () {
     await gameCore.connect(player).joinLobby(lobbyId);
 
     await lobbyManager.connect(host).startGame(lobbyId);
-    await gameCore.connect(host).startGame(lobbyId, 300, 300);
+    await gameCore.connect(host).startGame(lobbyId, 300, 300, await lobbyManager.getAddress());
 
     const lobbyCount = await lobbyManager.getLobbyCount();
     const lobbyData = await lobbyManager.getLobby(lobbyId);
@@ -51,11 +52,14 @@ describe("Frontend-contracts integration", function () {
     const discoverCost = await gameCore.previewDiscoverCost(lobbyId, host.address);
     const hostResources = await gameCore.getPlayerResources(lobbyId, host.address);
 
-    expect(buildCost[0]).to.equal(10n);
-    expect(upgradeCost[0]).to.equal(28n);
-    expect(discoverCost[0]).to.equal(36n);
-    expect(hostResources[0]).to.equal(48n);
-    expect(hostResources[4]).to.equal(96n);
+    expect(buildCost[0]).to.equal(5n);
+    expect(upgradeCost[0]).to.equal(14n);
+    expect(discoverCost[0]).to.equal(18n);
+    expect(hostResources[0]).to.equal(18n);
+    expect(hostResources[4]).to.equal(36n);
+
+    const gcPlayers = await gameCore.getLobbyPlayers(lobbyId);
+    expect(gcPlayers).to.deep.equal([host.address, player.address]);
 
     const hex = await gameCore.getHexTile(lobbyId, "0,0");
     expect(Number(hex[0])).to.equal(0);

@@ -29,7 +29,17 @@ export type LobbyState = {
   id: string;
   name: string;
   host: string;
-  status: "waiting" | "zero-round" | "running" | "ended";
+  status: "waiting" | "zero-round" | "running" | "ended" | "cancelled";
+  /** LobbyManager enum: OPEN=0, ACTIVE=1, COMPLETED=2, CANCELLED=3 */
+  lobbyManagerStatus?: number;
+  /** Set when LobbyManager.completeGame was called */
+  declaredWinnerAddress?: string | null;
+  /** When match ended on-chain but LM has no winner yet: best-effort from crafted goods / last alive */
+  inferredWinnerAddress?: string | null;
+  /** LobbyManager.hasTicket(lobbyId, connected wallet) — independent of GameCore roster. */
+  viewerLobbyManagerTicket?: boolean;
+  /** LM ticket but not yet in GameCore (e.g. legacy session); use `joinLobby` or rely on host start sync. */
+  viewerNeedsGameCoreJoin?: boolean;
   prizePool?: string;
   rounds: {
     index: number;

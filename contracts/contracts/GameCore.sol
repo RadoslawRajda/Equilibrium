@@ -5,6 +5,8 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 
 import "./ActorAware.sol";
 import "./GameConfig.sol";
+import "./ILobbyManagerPrize.sol";
+import "./ILobbyManagerSync.sol";
 
 contract GameCore is ActorAware {
     using Strings for uint256;
@@ -136,7 +138,16 @@ contract GameCore is ActorAware {
     event PlayerConceded(uint256 indexed lobbyId, address indexed player);
     event GameAbandoned(uint256 indexed lobbyId);
 
-    constructor() {}
+    address public immutable lobbyManager;
+
+    constructor(address _lobbyManager) {
+        require(_lobbyManager != address(0), "LobbyManager required");
+        lobbyManager = _lobbyManager;
+    }
+
+    function _notifyLobbyPrize(uint256 lobbyId, address winner) internal {
+        ILobbyManagerPrize(lobbyManager).notifyGameWinner(lobbyId, winner);
+    }
 
     function _abs(int256 value) internal pure returns (uint256) {
         return uint256(value >= 0 ? value : -value);
@@ -398,6 +409,7 @@ contract GameCore is ActorAware {
         if (aliveCount == 1) {
             lobby.status = Status.Ended;
             emit Victory(lobbyId, lastAlive);
+            _notifyLobbyPrize(lobbyId, lastAlive);
         } else if (aliveCount == 0) {
             lobby.status = Status.Ended;
             emit GameAbandoned(lobbyId);
@@ -420,7 +432,8 @@ contract GameCore is ActorAware {
         emit LobbyBootstrapped(lobbyId, host, lobby.mapSeed, lobby.mapRadius);
     }
 
-    function startGame(uint256 lobbyId, uint256 zeroRoundSeconds, uint256 roundSeconds) external {
+    /// @param lobbyManagerAddr Pass LobbyManager address to register every wallet that has a ticket (may have skipped `joinLobby`). Use `address(0)` to skip.
+    function startGame(uint256 lobbyId, uint256 zeroRoundSeconds, uint256 roundSeconds, address lobbyManagerAddr) external {
         Lobby storage lobby = lobbies[lobbyId];
         address actor = _actor();
         if (lobby.host == address(0)) {
@@ -430,6 +443,9 @@ contract GameCore is ActorAware {
         }
         require(actor == lobby.host, "Only host");
         require(lobby.status == Status.Waiting, "Already started");
+        if (lobbyManagerAddr != address(0)) {
+            _syncTicketHoldersFromLobbyManager(lobbyId, lobbyManagerAddr);
+        }
         lobby.status = Status.ZeroRound;
         lobby.roundStartedAt = block.timestamp;
         lobby.roundDurationSeconds = roundSeconds;
@@ -446,6 +462,26 @@ contract GameCore is ActorAware {
         if (!lobby.playerState[player].exists) {
             lobby.players.push(player);
             lobby.playerState[player] = _createPlayerState();
+        }
+    }
+
+    function _syncTicketHoldersFromLobbyManager(uint256 lobbyId, address lobbyManagerAddr) internal {
+        ILobbyManagerSync lm = ILobbyManagerSync(lobbyManagerAddr);
+        Lobby storage lobby = lobbies[lobbyId];
+        address[] memory holders = lm.getLobbyPlayers(lobbyId);
+        for (uint256 i = 0; i < holders.length; i++) {
+            address p = holders[i];
+            if (p == address(0)) {
+                continue;
+            }
+            if (!lm.hasTicket(lobbyId, p)) {
+                continue;
+            }
+            if (lobby.playerState[p].exists) {
+                continue;
+            }
+            lobby.players.push(p);
+            lobby.playerState[p] = _createPlayerState();
         }
     }
 
@@ -645,6 +681,16 @@ contract GameCore is ActorAware {
 
     /// @notice Swap basic resources (kinds 0–3) with the neutral bank at fixed rates from `GameConfig`.
     function tradeWithBank(uint256 lobbyId, uint8 sellKind, uint8 buyKind) external {
+        _tradeWithBank(lobbyId, sellKind, buyKind, 1);
+    }
+
+    /// @notice Same 4:1 rate as `tradeWithBank`, repeated `times` in one transaction (one lot = 4 sell : 1 buy).
+    function tradeWithBankBulk(uint256 lobbyId, uint8 sellKind, uint8 buyKind, uint256 times) external {
+        _tradeWithBank(lobbyId, sellKind, buyKind, times);
+    }
+
+    function _tradeWithBank(uint256 lobbyId, uint8 sellKind, uint8 buyKind, uint256 times) internal {
+        require(times >= 1 && times <= GameConfig.bankTradeBulkMaxLots(), "Bad bank bulk times");
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
         _requireNotEnded(lobby);
@@ -654,9 +700,11 @@ contract GameCore is ActorAware {
         uint256 recv = GameConfig.bankTradeReceiveAmount();
         Player storage player = lobby.playerState[_actor()];
         require(player.exists && player.alive, "Player not active");
-        _subtractKind(player.resources, sellKind, give);
-        _addKind(player.resources, buyKind, recv);
-        emit BankTrade(lobbyId, _actor(), sellKind, buyKind, give, recv);
+        uint256 totalGive = give * times;
+        uint256 totalRecv = recv * times;
+        _subtractKind(player.resources, sellKind, totalGive);
+        _addKind(player.resources, buyKind, totalRecv);
+        emit BankTrade(lobbyId, _actor(), sellKind, buyKind, totalGive, totalRecv);
     }
 
     function createProposal(uint256 lobbyId, string calldata title, string calldata effectKey, uint256 closeRound) external returns (uint256) {
@@ -783,6 +831,10 @@ contract GameCore is ActorAware {
         return (GameConfig.bankTradeGiveAmount(), GameConfig.bankTradeReceiveAmount());
     }
 
+    function getBankTradeBulkMaxLots() external pure returns (uint256) {
+        return GameConfig.bankTradeBulkMaxLots();
+    }
+
     function previewCraftAlloyCost() external pure returns (Resources memory cost) {
         (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.craftAlloyCost();
     }
@@ -813,8 +865,10 @@ contract GameCore is ActorAware {
         player.craftedGoods += GameConfig.craftAlloyYield();
         emit GoodsCrafted(lobbyId, _actor(), player.craftedGoods);
         if (player.craftedGoods >= GameConfig.victoryGoodsThreshold()) {
+            address w = _actor();
             lobby.status = Status.Ended;
-            emit Victory(lobbyId, _actor());
+            emit Victory(lobbyId, w);
+            _notifyLobbyPrize(lobbyId, w);
         }
     }
 

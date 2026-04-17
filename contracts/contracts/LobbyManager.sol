@@ -43,11 +43,15 @@ contract LobbyManager is ActorAware {
     uint128 public defaultSessionMaxSponsoredWei = uint128((uint256(TICKET_PRICE) * SESSION_SPONSOR_SHARE_BPS) / 10000);
     uint64 public defaultSessionTtlSeconds = 7 days;
 
+    /// @dev Set once after GameCore deployment; only that contract may call `notifyGameWinner`.
+    address public gameCore;
+
     event LobbyCreated(uint256 indexed lobbyId, address indexed host, string name);
     event TicketBought(uint256 indexed lobbyId, address indexed player);
     event GameStarted(uint256 indexed lobbyId);
     event GameCompleted(uint256 indexed lobbyId, address indexed winner, uint256 prizeAmount);
     event LobbyCancelled(uint256 indexed lobbyId);
+    event PlayerLeftOpenLobby(uint256 indexed lobbyId, address indexed player, uint256 creditedWei);
     event PrizeWithdrawn(uint256 indexed lobbyId, address indexed winner, uint256 amount);
     event SessionSponsorManagerUpdated(address indexed previousManager, address indexed newManager);
     event SessionPolicyRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
@@ -62,6 +66,11 @@ contract LobbyManager is ActorAware {
         uint64 expiresAt,
         uint128 maxSponsoredWei
     );
+
+    function setGameCore(address _gameCore) external onlyOwner {
+        require(gameCore == address(0) && _gameCore != address(0), "GameCore already set");
+        gameCore = _gameCore;
+    }
 
     function setSessionPolicyRegistry(address newRegistry) external onlyOwner {
         emit SessionPolicyRegistryUpdated(sessionPolicyRegistry, newRegistry);
@@ -287,6 +296,22 @@ contract LobbyManager is ActorAware {
         emit GameStarted(_lobbyId);
     }
 
+    /// @notice Called by GameCore when a winner is determined (alloy win, last player standing). Credits `playerBalance` immediately.
+    function notifyGameWinner(uint256 _lobbyId, address winner) external {
+        require(msg.sender == gameCore, "Only GameCore");
+        Lobby storage lobby = lobbies[_lobbyId];
+        require(lobby.status == LobbyStatus.ACTIVE, "Game not active");
+        require(winner != address(0), "No winner");
+        require(lobby.hasTicket[winner], "Winner must have ticket");
+
+        uint256 payout = lobby.prizePool;
+        lobby.status = LobbyStatus.COMPLETED;
+        lobby.winner = winner;
+        playerBalance[winner] += payout;
+
+        emit GameCompleted(_lobbyId, winner, payout);
+    }
+
     // Właściciel kończy grę i deklaruje zwycięzcę
     // Cała pula idzie do zwycięzcy
     function completeGame(uint256 _lobbyId, address _winner) external {
@@ -303,6 +328,47 @@ contract LobbyManager is ActorAware {
         emit GameCompleted(_lobbyId, _winner, lobby.prizePool);
     }
 
+    /// @notice While lobby is OPEN, a non-host player may leave and reclaim their equal share of `prizePool` and
+    ///         `sessionSponsorPool` still held by this contract. Funds already sent to the ERC-4337 EntryPoint for the
+    ///         player's session account are not clawed back here (recover via account-abstraction / that depositor).
+    function leaveOpenLobby(uint256 _lobbyId) external {
+        Lobby storage lobby = lobbies[_lobbyId];
+        address player = _actor();
+        require(lobby.status == LobbyStatus.OPEN, "Lobby not open");
+        require(lobby.hasTicket[player], "No ticket");
+        require(player != lobby.host, "Host must cancel lobby");
+
+        uint256 n = lobby.players.length;
+        require(n > 1, "Cannot leave as sole participant");
+
+        uint256 prizeShare = lobby.prizePool / n;
+        uint256 sponsorShare = sessionSponsorPool[_lobbyId] / n;
+        require(prizeShare + sponsorShare > 0, "Nothing to refund");
+
+        lobby.prizePool -= prizeShare;
+        sessionSponsorPool[_lobbyId] -= sponsorShare;
+
+        uint256 credited = prizeShare + sponsorShare;
+        playerBalance[player] += credited;
+
+        _removeOpenLobbyPlayer(lobby, player);
+        lobby.hasTicket[player] = false;
+
+        emit PlayerLeftOpenLobby(_lobbyId, player, credited);
+    }
+
+    function _removeOpenLobbyPlayer(Lobby storage lobby, address player) internal {
+        uint256 len = lobby.players.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (lobby.players[i] == player) {
+                lobby.players[i] = lobby.players[len - 1];
+                lobby.players.pop();
+                return;
+            }
+        }
+        revert("Player not in lobby");
+    }
+
     // Właściciel anuluje lobby (np. brak wystarczającej ilości graczy)
     // Wszyscy gracze dostają zwrot puli / lub inny mechanizm
     function cancelLobby(uint256 _lobbyId) external {
@@ -313,10 +379,20 @@ contract LobbyManager is ActorAware {
 
         lobby.status = LobbyStatus.CANCELLED;
 
-        // Zwrot pieniędzy wszystkim graczom
-        uint256 refundPerPlayer = lobby.prizePool / lobby.players.length;
-        for (uint256 i = 0; i < lobby.players.length; i++) {
-            playerBalance[lobby.players[i]] += refundPerPlayer;
+        uint256 n = lobby.players.length;
+        require(n > 0, "No players");
+        uint256 prize = lobby.prizePool;
+        uint256 sponsor = sessionSponsorPool[_lobbyId];
+        lobby.prizePool = 0;
+        sessionSponsorPool[_lobbyId] = 0;
+
+        // Split both prize pool and AA sponsor reserve (same idea as leaveOpenLobby per-player shares).
+        uint256 combined = prize + sponsor;
+        uint256 per = combined / n;
+        uint256 rem = combined % n;
+        for (uint256 i = 0; i < n; i++) {
+            uint256 extra = i < rem ? 1 : 0;
+            playerBalance[lobby.players[i]] += per + extra;
         }
 
         emit LobbyCancelled(_lobbyId);

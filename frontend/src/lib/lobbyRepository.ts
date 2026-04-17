@@ -22,6 +22,8 @@ export type LobbySummary = {
   playerCount: number;
   host: string;
   prizePool: string;
+  /** True when GameCore reports Ended (LobbyManager may still be "active" until completeGame). */
+  matchEndedOnChain?: boolean;
 };
 
 export type LoadSummariesResult = {
@@ -61,7 +63,7 @@ export class LobbyRepository {
   }
 
   async loadSummaries(): Promise<LoadSummariesResult> {
-    const { publicClient, lobbyManagerAddress, lobbyManagerAbi } = this.context;
+    const { publicClient, lobbyManagerAddress, lobbyManagerAbi, gameCoreAddress, gameCoreAbi } = this.context;
     if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi) {
       return { lobbies: [] };
     }
@@ -94,14 +96,41 @@ export class LobbyRepository {
             args: [BigInt(lobbyId)]
           } as any);
 
-          const [host, name, , status, prizePool, playerCount] = lobby as [string, string, bigint, bigint, bigint, bigint, string];
+          const [host, name, , lmStatus, prizePool, playerCount] = lobby as [
+            string,
+            string,
+            bigint,
+            bigint,
+            bigint,
+            bigint,
+            string
+          ];
+          let matchEndedOnChain = false;
+          if (gameCoreAddress && gameCoreAbi) {
+            try {
+              const roundRaw = await publicClient.readContract({
+                address: gameCoreAddress,
+                abi: gameCoreAbi,
+                functionName: "getLobbyRound",
+                args: [BigInt(lobbyId)]
+              } as any);
+              const rp = readLobbyRoundTuple(roundRaw);
+              matchEndedOnChain = rp !== null && rp.status === 3;
+            } catch {
+              matchEndedOnChain = false;
+            }
+          }
+          const lmLabel = managerStatusToLabel(Number(lmStatus));
+          const displayStatus =
+            matchEndedOnChain && lmLabel === "active" ? "finished (on-chain)" : lmLabel;
           return {
             id: String(lobbyId),
             name,
-            status: managerStatusToLabel(Number(status)),
+            status: displayStatus,
             playerCount: Number(playerCount),
             host,
-            prizePool: formatEther(prizePool)
+            prizePool: formatEther(prizePool),
+            matchEndedOnChain
           } satisfies LobbySummary;
         } catch {
           return null;
@@ -114,7 +143,12 @@ export class LobbyRepository {
 
   async loadLobbyState(
     lobbyId: string
-  ): Promise<{ lobby: LobbyState; mapConfig: { seed: string; radius: number } | null; actionCosts: ActionCosts | null } | null> {
+  ): Promise<{
+    lobby: LobbyState;
+    mapConfig: { seed: string; radius: number } | null;
+    actionCosts: ActionCosts | null;
+    bankTradeBulkMaxLots: number;
+  } | null> {
     const {
       publicClient,
       lobbyManagerAddress,
@@ -165,10 +199,55 @@ export class LobbyRepository {
         } as any).catch(() => null)
       ]);
 
-      const [host, name, , , prizePool] = lobbyData as [string, string, bigint, bigint, bigint, bigint, string];
-      const playerAddressList = playerAddresses as string[];
+      const [host, name, , lmStatusRaw, prizePool, , winnerRaw] = lobbyData as [
+        string,
+        string,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        string
+      ];
+      const lmStatus = Number(lmStatusRaw);
+      const lmPlayers = playerAddresses as string[];
+      let gcPlayers: string[] = [];
+      try {
+        const raw = await publicClient.readContract({
+          address: gameCoreAddress,
+          abi: gameCoreAbi,
+          functionName: "getLobbyPlayers",
+          args: [BigInt(lobbyId)]
+        } as any);
+        gcPlayers = (raw as string[]).filter(Boolean);
+      } catch {
+        gcPlayers = [];
+      }
+
+      let viewerLobbyManagerTicket = false;
+      if (viewerAddress) {
+        try {
+          viewerLobbyManagerTicket = Boolean(
+            await publicClient.readContract({
+              address: lobbyManagerAddress,
+              abi: lobbyManagerAbi,
+              functionName: "hasTicket",
+              args: [BigInt(lobbyId), viewerAddress as `0x${string}`]
+            } as any)
+          );
+        } catch {
+          viewerLobbyManagerTicket = false;
+        }
+      }
+
+      const viewerInGameCore = Boolean(
+        viewerAddress &&
+          gcPlayers.some((a) => a.toLowerCase() === viewerAddress.toLowerCase())
+      );
+      const viewerNeedsGameCoreJoin = Boolean(viewerAddress && viewerLobbyManagerTicket && !viewerInGameCore);
+
       const roundParsed = readLobbyRoundTuple(roundData);
-      const gameStatus = roundParsed ? roundParsed.status : null;
+      const gcStatusNum = roundParsed !== null ? roundParsed.status : null;
+      const gcEnded = gcStatusNum === 3;
       const rounds = roundParsed
         ? {
             index: roundParsed.roundIndex,
@@ -185,7 +264,26 @@ export class LobbyRepository {
             zeroRoundEndsAt: null
           };
 
-      const status = gameStatus !== null ? gameStatusToLabel(gameStatus) : "waiting";
+      const zeroAddr = "0x0000000000000000000000000000000000000000";
+      const declaredWinnerAddress =
+        winnerRaw && typeof winnerRaw === "string" && winnerRaw.toLowerCase() !== zeroAddr.toLowerCase()
+          ? winnerRaw
+          : null;
+
+      let status: LobbyState["status"];
+      if (lmStatus === 3) {
+        status = "cancelled";
+      } else if (gcEnded || lmStatus === 2) {
+        status = "ended";
+      } else if (gcStatusNum !== null && gcStatusNum !== undefined) {
+        status = gameStatusToLabel(gcStatusNum) as LobbyState["status"];
+      } else {
+        status = "waiting";
+      }
+
+      /** After bootstrap, GameCore.players is canonical; LobbyManager can list ticket-holders who never `joinLobby` — that showed as “eliminated” with 0 res. */
+      const playerAddressList =
+        status !== "waiting" && status !== "cancelled" && gcPlayers.length > 0 ? gcPlayers : lmPlayers;
 
       const [playerResources, viewerCraftedGoods] = await Promise.all([
         viewerAddress
@@ -209,7 +307,7 @@ export class LobbyRepository {
               .catch(() => 0n)
           : Promise.resolve(0n)
       ]);
-      const [buildCostRaw, upgradeCostRaw, discoverCostRaw] = await Promise.all([
+      const [buildCostRaw, upgradeCostRaw, discoverCostRaw, bankBulkMaxRaw] = await Promise.all([
         publicClient.readContract({
           address: gameCoreAddress,
           abi: gameCoreAbi,
@@ -227,8 +325,14 @@ export class LobbyRepository {
               functionName: "previewDiscoverCost",
               args: [BigInt(lobbyId), viewerAddress]
             } as any).catch(() => null)
-          : null
+          : null,
+        publicClient.readContract({
+          address: gameCoreAddress,
+          abi: gameCoreAbi,
+          functionName: "getBankTradeBulkMaxLots"
+        } as any).catch(() => 48n)
       ]);
+      const bankTradeBulkMaxLots = Math.max(1, Number(bankBulkMaxRaw ?? 48n));
 
       const emptyCost = () => ({ food: 0, wood: 0, stone: 0, ore: 0, energy: 0 });
       const actionCosts: ActionCosts | null =
@@ -241,6 +345,27 @@ export class LobbyRepository {
           : null;
 
       const craftedNum = Number(viewerCraftedGoods) || 0;
+
+      const craftedGoodsByAddress: Record<string, number> = {};
+      if (status === "ended" && playerAddressList.length > 0) {
+        const goodsResults = await Promise.all(
+          playerAddressList.map((playerAddress) =>
+            publicClient
+              .readContract({
+                address: gameCoreAddress,
+                abi: gameCoreAbi,
+                functionName: "getPlayerCraftedGoods",
+                args: [BigInt(lobbyId), playerAddress as `0x${string}`]
+              } as any)
+              .then((g: unknown) => Number(g ?? 0))
+              .catch(() => 0)
+          )
+        );
+        playerAddressList.forEach((addr, i) => {
+          craftedGoodsByAddress[addr.toLowerCase()] = goodsResults[i] ?? 0;
+        });
+      }
+
       const aliveFlags: boolean[] =
         playerAddressList.length > 0
           ? await Promise.all(
@@ -259,13 +384,37 @@ export class LobbyRepository {
           : [];
       const players = playerAddressList.map((playerAddress, index) => {
         const isViewer = viewerAddress?.toLowerCase() === playerAddress.toLowerCase();
+        const crafted =
+          status === "ended"
+            ? craftedGoodsByAddress[playerAddress.toLowerCase()] ?? 0
+            : isViewer
+              ? craftedNum
+              : 0;
         return buildPlayerState(
           playerAddress,
           isViewer && playerResources ? normalizeContractResources(playerResources) : emptyResources(),
-          isViewer ? craftedNum : 0,
+          crafted,
           aliveFlags[index] !== false
         );
       });
+
+      let inferredWinnerAddress: string | null = null;
+      if (status === "ended" && !declaredWinnerAddress) {
+        const aliveOnes = players.filter((p) => p.alive);
+        if (aliveOnes.length === 1) {
+          inferredWinnerAddress = aliveOnes[0].address;
+        } else if (players.length > 0) {
+          let best = players[0];
+          for (const p of players) {
+            if ((p.craftedGoods ?? 0) > (best.craftedGoods ?? 0)) best = p;
+          }
+          const maxCG = best?.craftedGoods ?? 0;
+          if (maxCG > 0) {
+            const top = players.filter((p) => (p.craftedGoods ?? 0) === maxCG);
+            if (top.length === 1) inferredWinnerAddress = top[0].address;
+          }
+        }
+      }
 
       let mapConfigState: { seed: string; radius: number } | null = null;
       const mapHexes: HexTile[] = [];
@@ -350,7 +499,14 @@ export class LobbyRepository {
         });
       }
 
-      const me = players.find((player) => viewerAddress && player.address.toLowerCase() === viewerAddress.toLowerCase()) ?? null;
+      const viewerInRoster = Boolean(
+        viewerAddress &&
+          playerAddressList.some((a) => a.toLowerCase() === viewerAddress.toLowerCase())
+      );
+      const me =
+        viewerInRoster && viewerAddress
+          ? players.find((player) => player.address.toLowerCase() === viewerAddress.toLowerCase()) ?? null
+          : null;
 
       let globalVotes: Array<{
         id: string;
@@ -412,6 +568,11 @@ export class LobbyRepository {
           name,
           host,
           status,
+          lobbyManagerStatus: lmStatus,
+          declaredWinnerAddress,
+          inferredWinnerAddress,
+          viewerLobbyManagerTicket,
+          viewerNeedsGameCoreJoin,
           rounds,
           players,
           me,
@@ -424,7 +585,8 @@ export class LobbyRepository {
           prizePool: formatEther(prizePool)
         },
         mapConfig: mapConfigState,
-        actionCosts
+        actionCosts,
+        bankTradeBulkMaxLots
       };
     } catch (error) {
       console.error(`Failed to load lobby ${lobbyId} from chain`, error);

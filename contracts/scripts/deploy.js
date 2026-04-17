@@ -89,7 +89,8 @@ async function main() {
     SimpleAccountFactory: () => [deployed.EntryPoint.address],
     LobbyPaymasterHook: () => [deployed.SessionForwarderActorAuthority.address, deployed.EntryPoint.address],
     LobbySessionPaymaster: () => [deployed.EntryPoint.address, deployed.LobbyPaymasterHook.address],
-    ERC8004AIGameMasterAdapter: () => [deployed.AIGameMaster.address]
+    ERC8004AIGameMasterAdapter: () => [deployed.AIGameMaster.address],
+    GameCore: () => [deployed.LobbyManager.address]
   };
 
   for (const name of contractNames) {
@@ -136,6 +137,7 @@ async function main() {
   await (await lobbySessionPaymaster.deposit({ value: paymasterDeposit })).wait();
   await (await lobbySessionPaymaster.addStake(86400, { value: paymasterStake })).wait();
   await (await lobbyManager.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
+  await (await lobbyManager.setGameCore(deployed.GameCore.address)).wait();
   await (await gameCore.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
   await (await voting.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
   await (await aiGameMaster.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();

@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-11T16:35:00.018Z",
+  "deployedAt": "2026-04-12T12:17:45.614Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -2593,6 +2593,31 @@
             {
               "indexed": true,
               "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "creditedWei",
+              "type": "uint256"
+            }
+          ],
+          "name": "PlayerLeftOpenLobby",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
               "name": "winner",
               "type": "address"
             },
@@ -3029,6 +3054,19 @@
           "type": "function"
         },
         {
+          "inputs": [],
+          "name": "gameCore",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
           "inputs": [
             {
               "internalType": "uint256",
@@ -3156,6 +3194,19 @@
           "inputs": [
             {
               "internalType": "uint256",
+              "name": "_lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "leaveOpenLobby",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
               "name": "",
               "type": "uint256"
             }
@@ -3212,6 +3263,24 @@
             }
           ],
           "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "_lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "winner",
+              "type": "address"
+            }
+          ],
+          "name": "notifyGameWinner",
+          "outputs": [],
+          "stateMutability": "nonpayable",
           "type": "function"
         },
         {
@@ -3369,6 +3438,19 @@
             }
           ],
           "name": "setEntryPoint",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "_gameCore",
+              "type": "address"
+            }
+          ],
+          "name": "setGameCore",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -6132,7 +6214,13 @@
       "address": "0x0d8cc4b8d15D4c3eF1d70af0071376fb26B5669b",
       "abi": [
         {
-          "inputs": [],
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "_lobbyManager",
+              "type": "address"
+            }
+          ],
           "stateMutability": "nonpayable",
           "type": "constructor"
         },
@@ -7198,6 +7286,19 @@
         },
         {
           "inputs": [],
+          "name": "getBankTradeBulkMaxLots",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
+          "inputs": [],
           "name": "getBankTradeParams",
           "outputs": [
             {
@@ -7788,6 +7889,19 @@
         },
         {
           "inputs": [],
+          "name": "lobbyManager",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
           "name": "owner",
           "outputs": [
             {
@@ -8028,6 +8142,11 @@
               "internalType": "uint256",
               "name": "roundSeconds",
               "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "lobbyManagerAddr",
+              "type": "address"
             }
           ],
           "name": "startGame",
@@ -8054,6 +8173,34 @@
             }
           ],
           "name": "tradeWithBank",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "sellKind",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint8",
+              "name": "buyKind",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "times",
+              "type": "uint256"
+            }
+          ],
+          "name": "tradeWithBankBulk",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"

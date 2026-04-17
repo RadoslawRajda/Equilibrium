@@ -18,6 +18,7 @@ import {
   formatCost,
   generateMapSeed,
   isAdjacentToOwnedHex,
+  normalizeContractResources,
   short,
   type HexTile,
   type LobbyState,
@@ -58,6 +59,8 @@ const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
 const FALLBACK_TICKET_PRICE_WEI = parseEther("5");
+/** Matches GameConfig.craftAlloyCost — used if previewCraftAlloyCost read fails */
+const FALLBACK_CRAFT_ALLOY_COST = { food: 3, wood: 3, stone: 3, ore: 3, energy: 0 };
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const VOTE_PRESETS = [
   {
@@ -117,9 +120,13 @@ function AppPage() {
   });
   const [bankSellKind, setBankSellKind] = useState(0);
   const [bankBuyKind, setBankBuyKind] = useState(1);
+  const [bankBulkLots, setBankBulkLots] = useState(1);
+  const [bankTradeBulkMaxLots, setBankTradeBulkMaxLots] = useState(48);
   const [craftCostHint, setCraftCostHint] = useState<string | null>(null);
   const [victoryAlloyTarget, setVictoryAlloyTarget] = useState<number | null>(null);
   const [ticketPriceWei, setTicketPriceWei] = useState<bigint | null>(null);
+  /** LobbyManager.playerBalance(address) — call withdraw() to receive ETH. */
+  const [lmWithdrawableWei, setLmWithdrawableWei] = useState<bigint | null>(null);
   const lobbySnapshotRef = useRef<LobbyState | null>(null);
   const localHexOverridesRef = useRef(
     new Map<string, { owner: string; discoveredBy: string[]; structure?: LobbyState["mapHexes"][number]["structure"] }>()
@@ -144,6 +151,7 @@ function AppPage() {
   const lobbyManagerAbi = contracts?.contracts?.LobbyManager?.abi;
   const gameCoreAddress = contracts?.contracts?.GameCore?.address as `0x${string}` | undefined;
   const gameCoreAbi = contracts?.contracts?.GameCore?.abi;
+  const rpcDisplay = import.meta.env.VITE_RPC_URL || "http://localhost:8545";
 
   useEffect(() => {
     if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi) {
@@ -178,43 +186,27 @@ function AppPage() {
     (async () => {
       try {
         const [costRaw, threshold] = await Promise.all([
-          publicClient
-            .readContract({
-              address: gameCoreAddress,
-              abi: gameCoreAbi,
-              functionName: "previewCraftAlloyCost",
-              args: []
-            } as any)
-            .catch(() => null),
-          publicClient
-            .readContract({
-              address: gameCoreAddress,
-              abi: gameCoreAbi,
-              functionName: "getVictoryGoodsThreshold",
-              args: []
-            } as any)
-            .catch(() => null)
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "previewCraftAlloyCost",
+            args: []
+          } as any),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getVictoryGoodsThreshold",
+            args: []
+          } as any)
         ]);
         if (cancelled) return;
-        if (costRaw && Array.isArray(costRaw) && costRaw.length >= 5) {
-          const [food, wood, stone, ore, energy] = costRaw as bigint[];
-          setCraftCostHint(
-            formatCost({
-              food: Number(food),
-              wood: Number(wood),
-              stone: Number(stone),
-              ore: Number(ore),
-              energy: Number(energy)
-            })
-          );
-        } else {
-          setCraftCostHint(null);
-        }
-        setVictoryAlloyTarget(threshold != null ? Number(threshold as bigint) : null);
+        // viem returns Solidity struct Resources as { food, wood, ... }, not a tuple array
+        setCraftCostHint(formatCost(normalizeContractResources(costRaw ?? FALLBACK_CRAFT_ALLOY_COST)));
+        setVictoryAlloyTarget(threshold != null ? Number(threshold as bigint) : 5);
       } catch {
         if (!cancelled) {
-          setCraftCostHint(null);
-          setVictoryAlloyTarget(null);
+          setCraftCostHint(formatCost(FALLBACK_CRAFT_ALLOY_COST));
+          setVictoryAlloyTarget(5);
         }
       }
     })();
@@ -492,12 +484,13 @@ function AppPage() {
     const result = await lobbyRepository.loadSummaries();
     setLobbies(result.lobbies);
     if (result.lobbyManagerMissing) {
+      const lm = lobbyManagerAddress ?? "(unknown)";
       setChainDeployHint(
-        "No LobbyManager bytecode at the address in src/abi/localhost.json on this RPC (common: fresh Anvil vs. stale deployment file). Use the same URL as VITE_RPC_URL, then run: cd contracts && npm run deploy:local"
+        `No bytecode at LobbyManager ${lm} on ${rpcDisplay}. Usually: Anvil was reset but abi/localhost.json still has old addresses, or the file was never synced from contracts/deployments. Fix: (1) cd contracts && npm run deploy:local (same RPC as VITE_RPC_URL; Hardhat uses GANACHE_RPC_URL or http://127.0.0.1:8545), (2) from repo root: node frontend/scripts/sync-abi.mjs, (3) restart the dev server.`
       );
     } else if (result.readFailed) {
       setChainDeployHint(
-        "getLobbyCount failed — ABI may not match this chain. Run: cd contracts && npm run deploy:local"
+        `getLobbyCount failed on ${rpcDisplay} — ABI may not match this chain. Redeploy: cd contracts && npm run deploy:local, then node frontend/scripts/sync-abi.mjs`
       );
     } else {
       setChainDeployHint(null);
@@ -511,8 +504,9 @@ function AppPage() {
     if (!hydrated) {
       const deployed = await lobbyRepository.isLobbyManagerDeployed();
       if (!deployed) {
+        const lm = lobbyManagerAddress ?? "(unknown)";
         setChainDeployHint(
-          "Contracts are not deployed at the addresses in abi/localhost.json on this RPC. From repo root: cd contracts && npm run deploy:local"
+          `No contract at ${lm} on ${rpcDisplay}. Run cd contracts && npm run deploy:local, then node frontend/scripts/sync-abi.mjs`
         );
       }
       return null;
@@ -521,6 +515,7 @@ function AppPage() {
     setChainDeployHint(null);
     setActiveMapConfig(hydrated.mapConfig);
     setActiveActionCosts(hydrated.actionCosts);
+    setBankTradeBulkMaxLots(hydrated.bankTradeBulkMaxLots);
     setActiveLobby(hydrated.lobby);
     return hydrated.lobby;
   };
@@ -530,6 +525,7 @@ function AppPage() {
       setActiveLobby(null);
       setActiveMapConfig(null);
       setActiveActionCosts(null);
+      setBankTradeBulkMaxLots(48);
       setSelectedHex(undefined);
       return;
     }
@@ -546,7 +542,11 @@ function AppPage() {
   }, [activeLobby, address]);
 
   const isLobbyHost = Boolean(activeLobby && address && activeLobby.host.toLowerCase() === address.toLowerCase());
-  const hasLobbyTicket = Boolean(activeLobby?.me?.hasTicket || activeLobby?.players?.some((player) => player.address.toLowerCase() === address?.toLowerCase()));
+  const hasLobbyTicket = Boolean(
+    activeLobby?.viewerLobbyManagerTicket ||
+      activeLobby?.me?.hasTicket ||
+      activeLobby?.players?.some((player) => player.address.toLowerCase() === address?.toLowerCase())
+  );
   const canStartLobby = Boolean(activeLobby && activeLobby.status === "waiting" && isLobbyHost && activeLobby.players.length >= 1);
 
   const projectedRound = useMemo(() => {
@@ -633,6 +633,35 @@ function AppPage() {
   }, [address, gameCoreAbi, gameCoreAddress, lobbyId, lobbyManagerAbi, lobbyManagerAddress, publicClient, lobbyRepository]);
 
   useEffect(() => {
+    if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi || !address) {
+      setLmWithdrawableWei(null);
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const wei = (await publicClient.readContract({
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "getPlayerBalance",
+          args: [address]
+        } as any)) as bigint;
+        if (!cancelled) setLmWithdrawableWei(wei);
+      } catch {
+        if (!cancelled) setLmWithdrawableWei(null);
+      }
+    };
+
+    void refresh();
+    const interval = setInterval(() => void refresh(), 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [address, lobbyManagerAbi, lobbyManagerAddress, publicClient]);
+
+  useEffect(() => {
     if (!activeLobby || !address) return;
 
     const ownedHexId = activeLobby.mapHexes.find((hex) => hex.owner?.toLowerCase() === address.toLowerCase())?.id;
@@ -654,7 +683,7 @@ function AppPage() {
     return `${minutes}:${seconds}`;
   };
 
-  // Tworzenie lobbies: kontrakt LobbyManager
+  // Lobby creation uses LobbyManager + GameCore.bootstrap
   const onCreateLobby = async (radius: number) => {
     if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !gameCoreAddress || !gameCoreAbi) return;
     setError("");
@@ -712,13 +741,13 @@ function AppPage() {
         throw new Error("Unable to determine created lobby id");
       }
 
-      const bootstrapTx = await sendSessionTransaction({
-        lobbyId: String(createdLobbyId),
-        contractAddress: gameCoreAddress,
-        contractAbi: gameCoreAbi,
+      const bootstrapTx = await walletClient.writeContract({
+        address: gameCoreAddress,
+        abi: gameCoreAbi,
         functionName: "bootstrapLobby",
+        account: address,
         args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
-      });
+      } as any);
 
       const bootstrapReceipt = await publicClient.waitForTransactionReceipt({
         hash: bootstrapTx as `0x${string}`
@@ -778,7 +807,7 @@ function AppPage() {
 
       const session = await ensureLobbySession(activeLobby.id, address);
       const sessionKey = assertSessionAddress(session.smartAccountAddress);
-      await walletClient.writeContract({
+      const buyTx = await walletClient.writeContract({
         address: lobbyManagerAddress,
         abi: lobbyManagerAbi,
         functionName: "buyTicketWithSession",
@@ -786,14 +815,16 @@ function AppPage() {
         args: [BigInt(activeLobby.id), sessionKey, 0n, BigInt(SESSION_TTL_SECONDS)],
         value: effectiveTicketWei
       } as any);
+      await publicClient.waitForTransactionReceipt({ hash: buyTx as `0x${string}` });
 
-      await sendSessionTransaction({
-        lobbyId: activeLobby.id,
-        contractAddress: gameCoreAddress,
-        contractAbi: gameCoreAbi,
+      const joinTx = await walletClient.writeContract({
+        address: gameCoreAddress,
+        abi: gameCoreAbi,
         functionName: "joinLobby",
+        account: address,
         args: [BigInt(activeLobby.id)]
-      });
+      } as any);
+      await publicClient.waitForTransactionReceipt({ hash: joinTx as `0x${string}` });
       confetti({ particleCount: 100, spread: 75, origin: { y: 0.75 } });
       await syncActiveLobbyFromChain(activeLobby.id);
       await syncLobbiesFromChain();
@@ -808,29 +839,32 @@ function AppPage() {
     setError("");
     setStartingLobby(true);
     try {
-      if (!publicClient) {
-        throw new Error("RPC client unavailable");
+      if (!publicClient || !walletClient) {
+        throw new Error("Wallet or RPC client unavailable");
       }
 
-      const lobbyStartTx = await sendSessionTransaction({
-        lobbyId: activeLobby.id,
-        contractAddress: lobbyManagerAddress,
-        contractAbi: lobbyManagerAbi,
+      const lobbyStartTx = await walletClient.writeContract({
+        address: lobbyManagerAddress,
+        abi: lobbyManagerAbi,
         functionName: "startGame",
+        account: address,
         args: [BigInt(activeLobby.id)]
-      });
+      } as any);
       const lobbyStartReceipt = await publicClient.waitForTransactionReceipt({ hash: lobbyStartTx as `0x${string}` });
       if (lobbyStartReceipt.status !== "success") {
         throw new Error("LobbyManager.startGame transaction reverted");
       }
 
-      const gameStartTx = await sendSessionTransaction({
-        lobbyId: activeLobby.id,
-        contractAddress: gameCoreAddress,
-        contractAbi: gameCoreAbi,
+      if (!lobbyManagerAddress) {
+        throw new Error("LobbyManager address missing");
+      }
+      const gameStartTx = await walletClient.writeContract({
+        address: gameCoreAddress,
+        abi: gameCoreAbi,
         functionName: "startGame",
-        args: [BigInt(activeLobby.id), BigInt(300), BigInt(300)]
-      });
+        account: address,
+        args: [BigInt(activeLobby.id), BigInt(300), BigInt(300), lobbyManagerAddress]
+      } as any);
       const gameStartReceipt = await publicClient.waitForTransactionReceipt({ hash: gameStartTx as `0x${string}` });
       if (gameStartReceipt.status !== "success") {
         throw new Error("GameCore.startGame transaction reverted");
@@ -857,22 +891,76 @@ function AppPage() {
   };
 
   const onCancelLobby = async () => {
-    if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !activeLobby) return;
+    if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !activeLobby || !walletClient || !publicClient) return;
     setError("");
     try {
-      await sendSessionTransaction({
-        lobbyId: activeLobby.id,
-        contractAddress: lobbyManagerAddress,
-        contractAbi: lobbyManagerAbi,
+      const hash = await walletClient.writeContract({
+        address: lobbyManagerAddress,
+        abi: lobbyManagerAbi,
         functionName: "cancelLobby",
-        args: [activeLobby.id]
-      });
+        account: address,
+        args: [BigInt(activeLobby.id)]
+      } as any);
+      await publicClient.waitForTransactionReceipt({ hash });
       navigate("/");
       setActiveLobby(null);
       setSelectedHex(undefined);
       await syncLobbiesFromChain();
     } catch (e: any) {
       setError(e.message);
+    }
+  };
+
+  const onLeaveLobby = async () => {
+    if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !activeLobby || !publicClient || !walletClient) return;
+    setError("");
+    setPendingAction("lobby:leave");
+    try {
+      const txHash = await walletClient.writeContract({
+        address: lobbyManagerAddress,
+        abi: lobbyManagerAbi,
+        functionName: "leaveOpenLobby",
+        account: address,
+        args: [BigInt(activeLobby.id)]
+      } as any);
+      await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+      navigate("/");
+      setActiveLobby(null);
+      setSelectedHex(undefined);
+      await syncLobbiesFromChain();
+    } catch (e: any) {
+      setError(e.message);
+      console.error("leaveOpenLobby failed", e);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const onWithdrawLobbyBalance = async () => {
+    if (!address || !lobbyManagerAddress || !lobbyManagerAbi) return;
+    setError("");
+    setPendingAction("lobby:withdraw");
+    try {
+      if (!walletClient) {
+        throw new Error("Wallet client unavailable");
+      }
+      if (!publicClient) {
+        throw new Error("RPC client unavailable");
+      }
+      const hash = await walletClient.writeContract({
+        address: lobbyManagerAddress,
+        abi: lobbyManagerAbi,
+        functionName: "withdraw",
+        account: address,
+        args: []
+      } as any);
+      await publicClient.waitForTransactionReceipt({ hash });
+      setLmWithdrawableWei(0n);
+    } catch (e: any) {
+      setError(e.message);
+      console.error("withdraw failed", e);
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -1012,12 +1100,21 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:bank-trade") {
+        const times = Math.max(
+          1,
+          Math.min(Number(payload.times ?? 1) || 1, bankTradeBulkMaxLots)
+        );
+        const fn = times === 1 ? "tradeWithBank" : "tradeWithBankBulk";
+        const args =
+          times === 1
+            ? [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind)]
+            : [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind), BigInt(times)];
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
-          functionName: "tradeWithBank",
-          args: [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind)]
+          functionName: fn,
+          args
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:cast") {
@@ -1127,15 +1224,108 @@ function AppPage() {
         onDisconnect={() => disconnect()}
         deployHint={chainDeployHint}
         ticketPriceLabel={ticketPriceLabel}
+        claimableWei={lmWithdrawableWei}
+        onClaimLobbyBalance={() => void onWithdrawLobbyBalance()}
+        claimPending={pendingAction === "lobby:withdraw"}
       />
     );
   }
 
-  if (activeLobby.status === "ended") {
+  if (activeLobby.status === "cancelled") {
+    const claimable = lmWithdrawableWei != null && lmWithdrawableWei > 0n;
     return (
       <div className="connect-screen">
-        <h1>Game ended</h1>
-        <p>The table voted to end this match (or it was resolved on-chain). Rounds no longer advance.</p>
+        <h1>Lobby cancelled</h1>
+        <p>This lobby was cancelled. Refunds are credited on the lobby contract — use Claim to move ETH to your wallet.</p>
+        {lmWithdrawableWei != null ? (
+          <p>
+            <strong>Claimable on contract</strong>: {formatEther(lmWithdrawableWei)} ETH
+          </p>
+        ) : (
+          <p>Reading your balance…</p>
+        )}
+        {claimable ? (
+          <button
+            type="button"
+            onClick={() => void onWithdrawLobbyBalance()}
+            disabled={pendingAction === "lobby:withdraw"}
+          >
+            {pendingAction === "lobby:withdraw" ? "Confirming…" : "Claim ETH to wallet"}
+          </button>
+        ) : lmWithdrawableWei != null && lmWithdrawableWei === 0n ? (
+          <p className="selected-text">No balance left to claim for this wallet.</p>
+        ) : null}
+        {error ? <p className="error-banner">{error}</p> : null}
+        <button type="button" onClick={() => navigate("/")}>
+          Back to lobbies
+        </button>
+      </div>
+    );
+  }
+
+  if (activeLobby.status === "ended") {
+    const winnerAddr = activeLobby.declaredWinnerAddress || activeLobby.inferredWinnerAddress || null;
+    const declared = Boolean(activeLobby.declaredWinnerAddress);
+    const lmActive = activeLobby.lobbyManagerStatus === 1;
+    return (
+      <div className="connect-screen">
+        <h1>Match over</h1>
+        {winnerAddr ? (
+          <>
+            <p>
+              <strong>Winner</strong>: {short(winnerAddr)}
+            </p>
+            <p className="selected-text" style={{ wordBreak: "break-all" }}>
+              {winnerAddr}
+            </p>
+            {declared ? (
+              <p>Recorded on the lobby contract (prize flow per contract rules).</p>
+            ) : lmActive ? (
+              <p>
+                On-chain match is finished. The host can call <strong>completeGame</strong> on the lobby contract to
+                declare the official winner and unlock the prize pool.
+              </p>
+            ) : (
+              <p>The match ended on-chain.</p>
+            )}
+          </>
+        ) : (
+          <p>
+            The match ended on-chain (e.g. vote or stalemate). No single winner was inferred from game state — check
+            block explorer or wait for the host to complete the lobby.
+          </p>
+        )}
+        {address && winnerAddr && address.toLowerCase() === winnerAddr.toLowerCase() ? (
+          <p>
+            <strong>You won this match.</strong>
+          </p>
+        ) : null}
+        <p className="selected-text">
+          Prizes are stored on the lobby contract as a balance — they are not sent automatically. If you have winnings or a
+          refund, claim them below.
+        </p>
+        {lmWithdrawableWei != null ? (
+          <p>
+            <strong>Claimable on contract</strong>: {formatEther(lmWithdrawableWei)} ETH
+          </p>
+        ) : (
+          <p>Reading your balance…</p>
+        )}
+        {lmWithdrawableWei != null && lmWithdrawableWei > 0n ? (
+          <button
+            type="button"
+            onClick={() => void onWithdrawLobbyBalance()}
+            disabled={pendingAction === "lobby:withdraw"}
+          >
+            {pendingAction === "lobby:withdraw" ? "Confirming…" : "Claim ETH to wallet"}
+          </button>
+        ) : lmWithdrawableWei != null && lmWithdrawableWei === 0n ? (
+          <p className="selected-text">
+            No funds to claim for this wallet. If you expected a prize, the host may still need to call{" "}
+            <code>completeGame</code>, or the match may have ended without recording a winner on the lobby contract.
+          </p>
+        ) : null}
+        {error ? <p className="error-banner">{error}</p> : null}
         <button type="button" onClick={() => navigate("/")}>
           Back to lobbies
         </button>
@@ -1150,6 +1340,9 @@ function AppPage() {
         lobby={activeLobby}
         isHost={isLobbyHost}
         hasTicket={hasLobbyTicket}
+        canLeaveLobby={Boolean(!isLobbyHost && hasLobbyTicket)}
+        onLeaveLobby={() => void onLeaveLobby()}
+        leaveLobbyPending={pendingAction === "lobby:leave"}
         canStart={canStartLobby}
         starting={startingLobby}
         ticketPriceLabel={ticketPriceLabel}
@@ -1158,6 +1351,7 @@ function AppPage() {
         onCancel={onCancelLobby}
         onBack={() => navigate("/")}
         onDisconnect={() => disconnect()}
+        actionError={error}
       />
     );
   }
@@ -1190,6 +1384,11 @@ function AppPage() {
           }}
         />
 
+        {address && activeLobby.me === null && (activeLobby.status === "running" || activeLobby.status === "zero-round") ? (
+          <p className="error-banner">
+            This wallet is not a player in this lobby. Connect a wallet that holds a ticket for this match.
+          </p>
+        ) : null}
         {error && <p className="error-banner">{error}</p>}
       </main>
 
@@ -1300,8 +1499,8 @@ function AppPage() {
         <div className="action-group">
           <h4>Bank</h4>
           <p className="selected-text">
-            Trade with the neutral bank: pay <strong>4</strong> of one basic resource (food, wood, stone, ore) for{" "}
-            <strong>1</strong> of another — no player counterparty required.
+            Trade with the neutral bank: pay <strong>4× lots</strong> of one basic resource for <strong>1× lots</strong> of
+            another (4:1 per lot). One transaction can repeat up to <strong>{bankTradeBulkMaxLots}</strong> lots.
           </p>
           <div className="trade-line">
             <label htmlFor="bank-sell">Pay</label>
@@ -1331,12 +1530,24 @@ function AppPage() {
               <option value={3}>ore ×1</option>
             </select>
           </div>
+          <div className="trade-line">
+            <label htmlFor="bank-lots">Lots (1–{bankTradeBulkMaxLots})</label>
+            <input
+              id="bank-lots"
+              type="number"
+              min={1}
+              max={bankTradeBulkMaxLots}
+              value={bankBulkLots}
+              onChange={(e) => setBankBulkLots(Math.max(1, Math.min(bankTradeBulkMaxLots, Number(e.target.value) || 1)))}
+              disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+            />
+          </div>
           <button
             type="button"
-            onClick={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind })}
+            onClick={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
             disabled={activeLobby.status !== "running" || bankSellKind === bankBuyKind || Boolean(pendingAction)}
           >
-            Execute bank trade
+            Execute bank trade{bankBulkLots > 1 ? ` (${bankBulkLots} lots)` : ""}
           </button>
         </div>
 
