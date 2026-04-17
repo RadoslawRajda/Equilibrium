@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { BatteryCharging, Factory, Pickaxe, Skull, TreePine, UserCheck, UtensilsCrossed, Wheat } from "lucide-react";
+import { BatteryCharging, Factory, Gem, Pickaxe, Skull, TreePine, UserCheck, Wheat } from "lucide-react";
 import type { PlayerState } from "../types";
 import { short } from "../lib/gameUtils";
 
@@ -120,7 +120,7 @@ export function SpectatorPlayersPanel({
                   <ResChip icon={Wheat} value={player.resources.food} accent={ACCENTS.food} title="Food" />
                   <ResChip icon={TreePine} value={player.resources.wood} accent={ACCENTS.wood} title="Wood" />
                   <ResChip icon={Pickaxe} value={player.resources.stone} accent={ACCENTS.stone} title="Stone" />
-                  <ResChip icon={UtensilsCrossed} value={player.resources.ore} accent={ACCENTS.ore} title="Ore" />
+                  <ResChip icon={Gem} value={player.resources.ore} accent={ACCENTS.ore} title="Ore" />
                   <ResChip icon={BatteryCharging} value={player.resources.energy} accent={ACCENTS.energy} title="Energy" />
                   <ResChip icon={Factory} value={player.craftedGoods ?? 0} accent={ACCENTS.alloy} title="Alloy" />
                 </div>
