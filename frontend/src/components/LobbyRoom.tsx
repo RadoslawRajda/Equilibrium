@@ -10,6 +10,7 @@ type Props = {
   hasTicket: boolean;
   canStart: boolean;
   starting?: boolean;
+  ticketPriceLabel?: string;
   onBuyTicket: () => void;
   onStart: () => void;
   onCancel: () => void;
@@ -24,6 +25,7 @@ export function LobbyRoom({
   hasTicket,
   canStart,
   starting = false,
+  ticketPriceLabel = "5",
   onBuyTicket,
   onStart,
   onCancel,
@@ -55,7 +57,7 @@ export function LobbyRoom({
       <section className="lobby-actions">
         {!hasTicket && (
           <motion.button whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.04 }} onClick={onBuyTicket}>
-            <TicketX size={18} /> Buy ticket 0.05 ETH
+            <TicketX size={18} /> Buy ticket {ticketPriceLabel} ETH
           </motion.button>
         )}
         {isHost && (

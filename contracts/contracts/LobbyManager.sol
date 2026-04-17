@@ -8,7 +8,9 @@ interface IEntryPointDeposits {
 }
 
 contract LobbyManager is ActorAware {
-    uint256 public constant TICKET_PRICE = 0.05 ether;
+    uint256 public constant TICKET_PRICE = 5 ether;
+    /// @notice Share of each ticket (basis points) carved out for AA: half to EntryPoint deposit on session account, half to sessionSponsorPool for paymaster reimbursements.
+    uint256 public constant SESSION_SPONSOR_SHARE_BPS = 2000;
     uint256 public constant MIN_PLAYERS = 1;
     uint256 public constant MAX_PLAYERS = 4;
 
@@ -38,7 +40,7 @@ contract LobbyManager is ActorAware {
     address public sessionSponsorManager;
     address public sessionPolicyRegistry;
     address public entryPoint;
-    uint128 public defaultSessionMaxSponsoredWei = uint128(0.005 ether);
+    uint128 public defaultSessionMaxSponsoredWei = uint128((uint256(TICKET_PRICE) * SESSION_SPONSOR_SHARE_BPS) / 10000);
     uint64 public defaultSessionTtlSeconds = 7 days;
 
     event LobbyCreated(uint256 indexed lobbyId, address indexed host, string name);
@@ -106,9 +108,15 @@ contract LobbyManager is ActorAware {
         emit SessionSponsorPoolConsumed(_lobbyId, amount, receiver);
     }
 
-    // Tworzenie lobby: właściciel od razu kupuje bilet za 0.05 ETH
+    /// @return totalWei 20% of ticket (SESSION_SPONSOR_SHARE_BPS / 10000 * TICKET_PRICE); perBranchWei half for EP, half for sponsor pool
+    function _sessionSponsorAmounts() internal pure returns (uint256 totalWei, uint256 perBranchWei) {
+        totalWei = (TICKET_PRICE * SESSION_SPONSOR_SHARE_BPS) / 10000;
+        perBranchWei = totalWei / 2;
+    }
+
+    // Tworzenie lobby: właściciel od razu kupuje bilet
     function createLobby(string memory _name) external payable returns (uint256) {
-        require(msg.value == TICKET_PRICE, "Must send exactly 0.05 ETH");
+        require(msg.value == TICKET_PRICE, "Must send exact ticket price");
         address player = _actor();
 
         return _createLobbyInternal(_name, player);
@@ -118,23 +126,24 @@ contract LobbyManager is ActorAware {
         string memory _name,
         address sessionKey,
         uint128 maxSponsoredWei,
-        uint64 ttlSeconds,
-        uint256 sponsorAmount
+        uint64 ttlSeconds
     ) external payable returns (uint256) {
-        require(msg.value == TICKET_PRICE, "Must send exactly 0.05 ETH");
+        require(msg.value == TICKET_PRICE, "Must send exact ticket price");
         address player = _actor();
 
         uint256 lobbyId = _createLobbyInternal(_name, player);
-        if (sponsorAmount > 0) {
-            _fundSessionEntryPoint(lobbyId, sessionKey, sponsorAmount);
-            _mirrorSessionSponsorPool(lobbyId, sponsorAmount);
+        (uint256 sponsorTotal, uint256 perBranch) = _sessionSponsorAmounts();
+        if (sponsorTotal > 0 && perBranch > 0) {
+            _fundSessionEntryPoint(lobbyId, sessionKey, perBranch);
+            _mirrorSessionSponsorPool(lobbyId, perBranch);
         }
 
+        uint128 policyMax = maxSponsoredWei == 0 ? uint128(sponsorTotal) : maxSponsoredWei;
         _provisionSessionPolicy(
             lobbyId,
             player,
             sessionKey,
-            maxSponsoredWei == 0 ? defaultSessionMaxSponsoredWei : maxSponsoredWei,
+            policyMax,
             ttlSeconds == 0 ? defaultSessionTtlSeconds : ttlSeconds
         );
 
@@ -162,7 +171,7 @@ contract LobbyManager is ActorAware {
 
     // Kupowanie biletu do istniejącego lobby
     function buyTicket(uint256 _lobbyId) external payable {
-        require(msg.value == TICKET_PRICE, "Must send exactly 0.05 ETH");
+        require(msg.value == TICKET_PRICE, "Must send exact ticket price");
         address player = _actor();
 
         _buyTicketInternal(_lobbyId, player);
@@ -172,23 +181,24 @@ contract LobbyManager is ActorAware {
         uint256 _lobbyId,
         address sessionKey,
         uint128 maxSponsoredWei,
-        uint64 ttlSeconds,
-        uint256 sponsorAmount
+        uint64 ttlSeconds
     ) external payable {
-        require(msg.value == TICKET_PRICE, "Must send exactly 0.05 ETH");
+        require(msg.value == TICKET_PRICE, "Must send exact ticket price");
         address player = _actor();
 
         _buyTicketInternal(_lobbyId, player);
-        if (sponsorAmount > 0) {
-            _fundSessionEntryPoint(_lobbyId, sessionKey, sponsorAmount);
-            _mirrorSessionSponsorPool(_lobbyId, sponsorAmount);
+        (uint256 sponsorTotal, uint256 perBranch) = _sessionSponsorAmounts();
+        if (sponsorTotal > 0 && perBranch > 0) {
+            _fundSessionEntryPoint(_lobbyId, sessionKey, perBranch);
+            _mirrorSessionSponsorPool(_lobbyId, perBranch);
         }
 
+        uint128 policyMax = maxSponsoredWei == 0 ? uint128(sponsorTotal) : maxSponsoredWei;
         _provisionSessionPolicy(
             _lobbyId,
             player,
             sessionKey,
-            maxSponsoredWei == 0 ? defaultSessionMaxSponsoredWei : maxSponsoredWei,
+            policyMax,
             ttlSeconds == 0 ? defaultSessionTtlSeconds : ttlSeconds
         );
     }

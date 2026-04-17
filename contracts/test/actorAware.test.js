@@ -81,7 +81,7 @@ describe("ActorAware authorities", function () {
     const lobbyManager = await LobbyManager.deploy();
     await lobbyManager.waitForDeployment();
 
-    await lobbyManager.connect(alice).createLobby("Sponsored", { value: ethers.parseEther("0.05") });
+    await lobbyManager.connect(alice).createLobby("Sponsored", { value: ethers.parseEther("5") });
     await lobbyManager.connect(alice).reserveSessionSponsorPool(1, ethers.parseEther("0.01"));
 
     await sessionForwarder.setSponsorPool(await lobbyManager.getAddress());

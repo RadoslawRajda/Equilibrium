@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-11T16:01:29.764Z",
+  "deployedAt": "2026-04-11T16:39:13.207Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -2797,6 +2797,19 @@
         },
         {
           "inputs": [],
+          "name": "SESSION_SPONSOR_SHARE_BPS",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
           "name": "TICKET_PRICE",
           "outputs": [
             {
@@ -2862,11 +2875,6 @@
               "internalType": "uint64",
               "name": "ttlSeconds",
               "type": "uint64"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sponsorAmount",
-              "type": "uint256"
             }
           ],
           "name": "buyTicketWithSession",
@@ -2968,11 +2976,6 @@
               "internalType": "uint64",
               "name": "ttlSeconds",
               "type": "uint64"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sponsorAmount",
-              "type": "uint256"
             }
           ],
           "name": "createLobbyWithSession",

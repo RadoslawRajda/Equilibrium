@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-const TICKET_PRICE = ethers.parseEther("0.05");
+const TICKET_PRICE = ethers.parseEther("5");
 
 describe("Frontend-contracts integration", function () {
   it("exposes a complete chain snapshot compatible with frontend LobbyRepository reads", async function () {

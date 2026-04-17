@@ -21,7 +21,7 @@ describe("AA and ERC-8004 adapters", function () {
     await sessionForwarder.setSponsorPool(await lobbyManager.getAddress());
     await lobbyManager.setSessionSponsorManager(await sessionForwarder.getAddress());
 
-    await lobbyManager.connect(host).createLobby("AA Arena", { value: ethers.parseEther("0.05") });
+    await lobbyManager.connect(host).createLobby("AA Arena", { value: ethers.parseEther("5") });
     await lobbyManager.connect(host).reserveSessionSponsorPool(1, ethers.parseEther("0.01"));
 
     const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 3600);

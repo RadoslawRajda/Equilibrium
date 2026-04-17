@@ -56,8 +56,8 @@ type ContractMeta = {
 
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
-const CREATE_LOBBY_SPONSOR = parseEther("0.01");
-const BUY_TICKET_SPONSOR = parseEther("0.005");
+/** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
+const FALLBACK_TICKET_PRICE_WEI = parseEther("5");
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const VOTE_PRESETS = [
   {
@@ -119,6 +119,7 @@ function AppPage() {
   const [bankBuyKind, setBankBuyKind] = useState(1);
   const [craftCostHint, setCraftCostHint] = useState<string | null>(null);
   const [victoryAlloyTarget, setVictoryAlloyTarget] = useState<number | null>(null);
+  const [ticketPriceWei, setTicketPriceWei] = useState<bigint | null>(null);
   const lobbySnapshotRef = useRef<LobbyState | null>(null);
   const localHexOverridesRef = useRef(
     new Map<string, { owner: string; discoveredBy: string[]; structure?: LobbyState["mapHexes"][number]["structure"] }>()
@@ -143,6 +144,29 @@ function AppPage() {
   const lobbyManagerAbi = contracts?.contracts?.LobbyManager?.abi;
   const gameCoreAddress = contracts?.contracts?.GameCore?.address as `0x${string}` | undefined;
   const gameCoreAbi = contracts?.contracts?.GameCore?.abi;
+
+  useEffect(() => {
+    if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi) {
+      setTicketPriceWei(null);
+      return;
+    }
+    let cancelled = false;
+    publicClient
+      .readContract({
+        address: lobbyManagerAddress,
+        abi: lobbyManagerAbi,
+        functionName: "TICKET_PRICE"
+      } as any)
+      .then((v) => {
+        if (!cancelled) setTicketPriceWei(v as bigint);
+      })
+      .catch(() => {
+        if (!cancelled) setTicketPriceWei(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [publicClient, lobbyManagerAddress, lobbyManagerAbi]);
 
   useEffect(() => {
     if (!publicClient || !gameCoreAddress || !gameCoreAbi) {
@@ -212,6 +236,9 @@ function AppPage() {
       }),
     [address, gameCoreAbi, gameCoreAddress, lobbyManagerAbi, lobbyManagerAddress, publicClient]
   );
+
+  const effectiveTicketWei = ticketPriceWei ?? FALLBACK_TICKET_PRICE_WEI;
+  const ticketPriceLabel = formatEther(effectiveTicketWei);
 
   const aaConfig = useMemo(() => {
     const rpcUrl = import.meta.env.VITE_RPC_URL || "http://localhost:8545";
@@ -654,14 +681,8 @@ function AppPage() {
         abi: lobbyManagerAbi,
         functionName: "createLobbyWithSession",
         account: address,
-        args: [
-          lobbyName,
-          sessionKey,
-          CREATE_LOBBY_SPONSOR,
-          BigInt(SESSION_TTL_SECONDS),
-          CREATE_LOBBY_SPONSOR
-        ],
-        value: parseEther("0.05")
+        args: [lobbyName, sessionKey, 0n, BigInt(SESSION_TTL_SECONDS)],
+        value: effectiveTicketWei
       } as any);
 
       const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createTx as `0x${string}` });
@@ -762,14 +783,8 @@ function AppPage() {
         abi: lobbyManagerAbi,
         functionName: "buyTicketWithSession",
         account: address,
-        args: [
-          BigInt(activeLobby.id),
-          sessionKey,
-          BUY_TICKET_SPONSOR,
-          BigInt(SESSION_TTL_SECONDS),
-          BUY_TICKET_SPONSOR
-        ],
-        value: parseEther("0.05")
+        args: [BigInt(activeLobby.id), sessionKey, 0n, BigInt(SESSION_TTL_SECONDS)],
+        value: effectiveTicketWei
       } as any);
 
       await sendSessionTransaction({
@@ -1111,6 +1126,7 @@ function AppPage() {
         onOpen={onOpenLobby}
         onDisconnect={() => disconnect()}
         deployHint={chainDeployHint}
+        ticketPriceLabel={ticketPriceLabel}
       />
     );
   }
@@ -1136,6 +1152,7 @@ function AppPage() {
         hasTicket={hasLobbyTicket}
         canStart={canStartLobby}
         starting={startingLobby}
+        ticketPriceLabel={ticketPriceLabel}
         onBuyTicket={onBuyTicket}
         onStart={onStartLobby}
         onCancel={onCancelLobby}

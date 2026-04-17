@@ -19,9 +19,20 @@ type Props = {
   onOpen: (lobbyId: string) => void;
   onDisconnect: () => void;
   deployHint?: string | null;
+  /** Human-readable ticket price (e.g. from LobbyManager.TICKET_PRICE) */
+  ticketPriceLabel?: string;
 };
 
-export function Lobby({ address, lobbies, creating, onCreate, onOpen, onDisconnect, deployHint }: Props) {
+export function Lobby({
+  address,
+  lobbies,
+  creating,
+  onCreate,
+  onOpen,
+  onDisconnect,
+  deployHint,
+  ticketPriceLabel = "5"
+}: Props) {
   const [radius, setRadius] = useState(4);
 
   return (
@@ -50,7 +61,7 @@ export function Lobby({ address, lobbies, creating, onCreate, onOpen, onDisconne
           </select>
         </label>
         <motion.button whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.04 }} onClick={() => onCreate(radius)} disabled={creating}>
-          <PlusCircle size={18} /> New Lobby
+          <PlusCircle size={18} /> New Lobby ({ticketPriceLabel} ETH)
         </motion.button>
       </section>
 
