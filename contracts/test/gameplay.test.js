@@ -7,6 +7,7 @@ const {
   ZERO_ROUND_SECONDS,
   ROUND_SECONDS
 } = require("./gameplay.config.js");
+const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
 const BIOMES = ["Plains", "Forest", "Mountains", "Desert"];
 const RESOURCE_BY_BIOME = {
   Plains: "food",
@@ -27,7 +28,7 @@ async function deploySystem() {
   const [deployer, host, player1, player2, player3, outsider] = await ethers.getSigners();
 
   const LobbyManager = await ethers.getContractFactory("LobbyManager");
-  const GameCore = await ethers.getContractFactory("GameCore");
+  const GameCore = await getLinkedGameCoreFactory();
 
   const lobbyManager = await LobbyManager.deploy();
   await lobbyManager.waitForDeployment();
@@ -397,11 +398,11 @@ describe("GameCore gameplay", function () {
     expect(roundAfterPick[0]).to.equal(1n);
 
     if (farTile) {
-      await expect(gameCore.connect(host).discoverHex(1, farTile.hexId)).to.be.revertedWith("Must be adjacent");
+      await expect(gameCore.connect(host).discoverHex(1, farTile.hexId, farTile.q, farTile.r)).to.be.revertedWith("Must be adjacent");
     }
 
     const beforeResources = await gameCore.getPlayerResources(1, host.address);
-    await expect(gameCore.connect(host).discoverHex(1, target.hexId))
+    await expect(gameCore.connect(host).discoverHex(1, target.hexId, target.q, target.r))
       .to.emit(gameCore, "HexDiscovered")
       .withArgs(1n, host.address, target.hexId);
 
@@ -428,7 +429,7 @@ describe("GameCore gameplay", function () {
 
     await mineSeconds(ROUND_SECONDS * 2 + 5);
 
-    await expect(gameCore.connect(host).discoverHex(1, target.hexId))
+    await expect(gameCore.connect(host).discoverHex(1, target.hexId, target.q, target.r))
       .to.emit(gameCore, "RoundAdvanced")
       .and.to.emit(gameCore, "HexDiscovered");
 
@@ -450,7 +451,7 @@ describe("GameCore gameplay", function () {
     expect(initialCost[2]).to.equal(0n);
     expect(initialCost[3]).to.equal(1n);
 
-    await gameCore.connect(host).discoverHex(1, target.hexId);
+    await gameCore.connect(host).discoverHex(1, target.hexId, target.q, target.r);
 
     const afterFirstDiscoverCost = await gameCore.previewDiscoverCost(1, host.address);
     expect(afterFirstDiscoverCost[0]).to.equal(0n);
@@ -515,7 +516,7 @@ describe("GameCore gameplay", function () {
     expect(afterStart[4]).to.equal(START_ENERGY);
 
     await mineSeconds(ROUND_SECONDS + 5);
-    await gameCore.connect(host).discoverHex(1, target.hexId);
+    await gameCore.connect(host).discoverHex(1, target.hexId, target.q, target.r);
 
     const afterTimeoutAction = await gameCore.getPlayerResources(1, host.address);
     expect(afterTimeoutAction[4]).to.equal(START_ENERGY);
@@ -581,7 +582,7 @@ describe("GameCore gameplay", function () {
 
     await mineSeconds(ROUND_SECONDS + 5);
 
-    await expect(gameCore.connect(host).discoverHex(1, adjacent.hexId))
+    await expect(gameCore.connect(host).discoverHex(1, adjacent.hexId, adjacent.q, adjacent.r))
       .to.emit(gameCore, "RoundAdvanced")
       .and.to.emit(gameCore, "HexDiscovered");
 

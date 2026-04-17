@@ -32,11 +32,15 @@ export async function executeRoundBatch(
       }
       if (type === "discover") {
         const hexId = String(a.hexId ?? "");
+        const parts = hexId.split(",");
+        if (parts.length !== 2) throw new Error(`discover: bad hexId ${hexId}`);
+        const q = BigInt(parts[0].trim());
+        const r = BigInt(parts[1].trim());
         const hash = await walletClient.writeContract({
           address: gameCore,
           abi: gameCoreAbi,
           functionName: "discoverHex",
-          args: [lobbyId, hexId],
+          args: [lobbyId, hexId, q, r],
           chain,
           account
         });

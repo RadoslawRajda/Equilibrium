@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
 
 const TICKET_PRICE = ethers.parseEther("5");
 
@@ -8,7 +9,7 @@ describe("Frontend-contracts integration", function () {
     const [host, player] = await ethers.getSigners();
 
     const LobbyManager = await ethers.getContractFactory("LobbyManager");
-    const GameCore = await ethers.getContractFactory("GameCore");
+    const GameCore = await getLinkedGameCoreFactory();
 
     const lobbyManager = await LobbyManager.deploy();
     await lobbyManager.waitForDeployment();

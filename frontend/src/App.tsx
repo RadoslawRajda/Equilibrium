@@ -7,12 +7,12 @@ import {
   CheckCircle2,
   Factory,
   Flag,
-  Gem,
   Hammer,
   Leaf,
   Pickaxe,
   Sparkles,
   TreePine,
+  UtensilsCrossed,
   Vote,
   Wheat
 } from "lucide-react";
@@ -1365,12 +1365,14 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:discover") {
+        const hex = activeLobby.mapHexes.find((tile) => tile.id === payload.hexId);
+        if (!hex) throw new Error("Hex not found");
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
           functionName: "discoverHex",
-          args: [lobbyId, payload.hexId]
+          args: [lobbyId, hex.id, BigInt(hex.q), BigInt(hex.r)]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:build") {
@@ -1607,7 +1609,7 @@ function AppPage() {
       food: Wheat,
       wood: TreePine,
       stone: Pickaxe,
-      ore: Gem,
+      ore: UtensilsCrossed,
       energy: BatteryCharging
     };
     const Icon = iconByKind[kind];

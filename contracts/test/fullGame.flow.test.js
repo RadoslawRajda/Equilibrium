@@ -7,6 +7,7 @@ const {
   ZERO_ROUND_SECONDS,
   ROUND_SECONDS
 } = require("./gameplay.config.js");
+const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
 
 /** GameCore.Status: Waiting=0, ZeroRound=1, Running=2, Ended=3 */
 const GC = { Waiting: 0, ZeroRound: 1, Running: 2, Ended: 3 };
@@ -16,7 +17,7 @@ const LM = { OPEN: 0, ACTIVE: 1, COMPLETED: 2, CANCELLED: 3 };
 async function deploySystem() {
   const [deployer, host, player1, player2, player3, outsider] = await ethers.getSigners();
   const LobbyManager = await ethers.getContractFactory("LobbyManager");
-  const GameCore = await ethers.getContractFactory("GameCore");
+  const GameCore = await getLinkedGameCoreFactory();
   const lobbyManager = await LobbyManager.deploy();
   await lobbyManager.waitForDeployment();
   const gameCore = await GameCore.deploy(await lobbyManager.getAddress());

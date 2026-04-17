@@ -1,11 +1,12 @@
 const { expect } = require("chai");
 const { ethers, network } = require("hardhat");
 const { TICKET_PRICE, DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS, ZERO_ROUND_SECONDS, ROUND_SECONDS } = require("./gameplay.config.js");
+const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
 
 async function deploySystem() {
   const [deployer, host, player1, player2, player3, outsider] = await ethers.getSigners();
   const LobbyManager = await ethers.getContractFactory("LobbyManager");
-  const GameCore = await ethers.getContractFactory("GameCore");
+  const GameCore = await getLinkedGameCoreFactory();
   const lobbyManager = await LobbyManager.deploy();
   await lobbyManager.waitForDeployment();
   const gameCore = await GameCore.deploy(await lobbyManager.getAddress());

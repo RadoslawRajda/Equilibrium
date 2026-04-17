@@ -67,6 +67,11 @@ async function main() {
   deployed.EntryPoint = { address: ep.address, abi: ep.abi };
   console.log("Using EntryPoint at", ep.address);
 
+  const hexCoordsLib = await (await ethers.getContractFactory("HexCoords")).deploy();
+  await hexCoordsLib.waitForDeployment();
+  const hexCoordsAddress = await hexCoordsLib.getAddress();
+  console.log("HexCoords library at", hexCoordsAddress);
+
   const contractNames = [
     "SimpleAccountFactory",
     "DirectActorAuthority",
@@ -95,7 +100,10 @@ async function main() {
   };
 
   for (const name of contractNames) {
-    const Factory = await ethers.getContractFactory(name);
+    const Factory =
+      name === "GameCore"
+        ? await ethers.getContractFactory(name, { libraries: { HexCoords: hexCoordsAddress } })
+        : await ethers.getContractFactory(name);
     const constructorArgsFactory = constructorArgsByName[name];
     const constructorArgs = constructorArgsFactory ? constructorArgsFactory() : [];
     const contract = await Factory.deploy(...constructorArgs);
