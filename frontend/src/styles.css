@@ -10,6 +10,27 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(86, 240, 255, 0.45) rgba(8, 15, 42, 0.45);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(8, 15, 42, 0.45);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(86, 240, 255, 0.45);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(86, 240, 255, 0.65);
 }
 
 html,
@@ -32,27 +53,116 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font-family: "Sora", sans-serif;
 }
 
-.connect-screen,
-.lobby-shell {
+select {
+  border-radius: 10px;
+  border: 1px solid rgba(130, 160, 255, 0.4);
+  background-color: #0e1a45;
+  color: var(--text);
+  padding: 0.45rem 2rem 0.45rem 1rem;
+  font-size: 0.9rem;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3A%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3A%2214%22%20height%3A%2214%22%20viewBox%3A%220%200%2024%2024%22%20fill%3A%22none%22%20stroke%3A%22%239fb0de%22%20stroke-width%3A%222%22%20stroke-linecap%3A%22round%22%20stroke-linejoin%3A%22round%22%3E%3Cpolyline%20points%3A%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 14px;
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+select:focus {
+  outline: none;
+  border-color: rgba(86, 240, 255, 0.8);
+  box-shadow: 0 0 10px rgba(86, 240, 255, 0.2);
+}
+
+select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+select option {
+  background-color: #0e1a45;
+  color: var(--text);
+}
+
+.connect-screen {
   min-height: 100vh;
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: 1.8rem;
   padding: 2rem;
+}
+
+.lobby-shell {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 4rem 1.5rem;
+  gap: 2.5rem;
+}
+
+.lobby-shell > * {
+  width: 100%;
+  max-width: 860px;
+}
+
+.lobby-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.lobby-header h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 2.8rem;
+  text-shadow: 0 0 20px rgba(86, 240, 255, 0.4);
+}
+
+.lobby-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.1rem;
 }
 
 .connect-buttons,
 .lobby-actions {
   display: flex;
-  gap: 0.8rem;
+  gap: 1.2rem;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+
+.wallet-strip {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgba(130, 160, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(8, 15, 42, 0.65);
+  font-size: 0.85rem;
+  width: auto;
+  max-width: max-content;
+}
+
+.wallet-strip button {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
 }
 
 button {
@@ -78,19 +188,77 @@ button:disabled {
 }
 
 .lobby-list {
-  width: min(860px, 100%);
   background: var(--panel);
   border: 1px solid rgba(130, 160, 255, 0.25);
   border-radius: 20px;
   padding: 1rem;
+  max-height: clamp(300px, 60vh, 900px);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .lobby-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.9rem;
+  padding: 1.2rem 1rem;
   border-bottom: 1px solid rgba(130, 160, 255, 0.2);
+  gap: 1.2rem;
+}
+
+.lobby-card > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lobby-card h3 {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lobby-card p {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lobby-room-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 2.5rem;
+}
+
+.lobby-room-header button.ghost-button {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+}
+
+.lobby-room-header > div {
+  text-align: center;
+}
+
+.lobby-room-header h1 {
+  margin: 0 0 0.25rem 0;
+}
+
+.lobby-room-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.lobby-radius-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .game-shell {

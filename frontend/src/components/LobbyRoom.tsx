@@ -94,13 +94,12 @@ export function LobbyRoom({
           </motion.button>
         ) : null}
         {isHost && registeredAgents.length > 0 && onInviteAgent ? (
-          <div className="lobby-invite-agent" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-            <label>
+          <div className="lobby-invite-agent" style={{ display: "flex", gap: "0.8rem", flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               Invite AI agent
               <select
                 value={invitePick}
                 onChange={(e) => setInvitePick(e.target.value)}
-                style={{ marginLeft: "0.5rem" }}
               >
                 <option value="">—</option>
                 {registeredAgents.map((a) => (
