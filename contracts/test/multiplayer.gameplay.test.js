@@ -109,6 +109,6 @@ describe("Multiplayer GameCore", function () {
     expect(await gameCore.isPlayerAlive(1, host.address)).to.equal(true);
     expect(await gameCore.isPlayerAlive(1, player1.address)).to.equal(true);
 
-    await expect(gameCore.connect(host).collect(1, t0.hexId, 30)).to.emit(gameCore, "ResourcesCollected");
+    await expect(gameCore.connect(host).collect(1, t0.hexId)).to.emit(gameCore, "ResourcesCollected");
   });
 });

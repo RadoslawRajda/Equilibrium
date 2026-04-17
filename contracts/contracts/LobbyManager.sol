@@ -12,7 +12,7 @@ contract LobbyManager is ActorAware {
     /// @notice Share of each ticket (basis points) carved out for AA: half to EntryPoint deposit on session account, half to sessionSponsorPool for paymaster reimbursements.
     uint256 public constant SESSION_SPONSOR_SHARE_BPS = 2000;
     uint256 public constant MIN_PLAYERS = 1;
-    uint256 public constant MAX_PLAYERS = 4;
+    uint256 public constant MAX_PLAYERS = 8;
 
     enum LobbyStatus {
         OPEN,      // Przyjmuje graczy

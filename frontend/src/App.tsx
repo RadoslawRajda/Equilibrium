@@ -13,6 +13,9 @@ import { Lobby } from "./components/Lobby";
 import { LobbyRoom } from "./components/LobbyRoom";
 import { ResourcePanel } from "./components/ResourcePanel";
 import { SpectatorPlayersPanel } from "./components/SpectatorPlayersPanel";
+import { SpectatorTradeFeed } from "./components/SpectatorTradeFeed";
+import { SpectatorOnChainTrades } from "./components/SpectatorOnChainTrades";
+import { TradeOffersModal } from "./components/TradeOffersModal";
 import { localGanache } from "./lib/wallet";
 import {
   ActionCosts,
@@ -20,12 +23,19 @@ import {
   generateMapSeed,
   isAdjacentToOwnedHex,
   normalizeContractResources,
+  readDefaultLobbyPhaseDurations,
   short,
   type HexTile,
   type LobbyState,
   type ResourceKey
 } from "./lib/gameUtils";
 import { LobbyRepository, type LobbySummary } from "./lib/lobbyRepository";
+import { projectRunningRoundClock } from "./lib/roundClock";
+import {
+  FALLBACK_LOBBY_RUNNING_ROUND_SECONDS,
+  FALLBACK_LOBBY_ZERO_ROUND_SECONDS
+} from "./lib/chainGameDefaults";
+import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActivityFeed";
 
 type ContractMeta = {
   contracts: {
@@ -90,6 +100,25 @@ const VOTE_PRESETS = [
   }
 ] as const;
 
+/** GameCore `Resources` tuple — all five keys required for ABI encoding (sparse objects cause BigInt(undefined)). */
+function tradeResourcesTuple(value: Record<string, unknown> | null | undefined): {
+  food: bigint;
+  wood: bigint;
+  stone: bigint;
+  ore: bigint;
+  energy: bigint;
+} {
+  const n = (key: ResourceKey) =>
+    BigInt(Math.max(0, Math.floor(Number((value ?? {})[key] ?? 0))));
+  return {
+    food: n("food"),
+    wood: n("wood"),
+    stone: n("stone"),
+    ore: n("ore"),
+    energy: n("energy")
+  };
+}
+
 function AppPage() {
   const navigate = useNavigate();
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -125,10 +154,18 @@ function AppPage() {
   const [bankTradeBulkMaxLots, setBankTradeBulkMaxLots] = useState(48);
   const [craftCostHint, setCraftCostHint] = useState<string | null>(null);
   const [victoryAlloyTarget, setVictoryAlloyTarget] = useState<number | null>(null);
+  /** From `GameCore.getDefaultLobbyPhaseDurations` (GameConfig); used for `startGame` / advance fallback. */
+  const [chainLobbyPhaseDefaults, setChainLobbyPhaseDefaults] = useState<{
+    zeroRoundSeconds: number;
+    runningRoundSeconds: number;
+  } | null>(null);
   const [ticketPriceWei, setTicketPriceWei] = useState<bigint | null>(null);
   /** LobbyManager.playerBalance(address) — call withdraw() to receive ETH. */
   const [lmWithdrawableWei, setLmWithdrawableWei] = useState<bigint | null>(null);
   const [registryAgents, setRegistryAgents] = useState<{ address: string; name: string }[]>([]);
+  const [spectatorTradeFeed, setSpectatorTradeFeed] = useState<TradeFeedItem[]>([]);
+  const [spectatorTradeFeedLoading, setSpectatorTradeFeedLoading] = useState(false);
+  const [tradeOffersModalOpen, setTradeOffersModalOpen] = useState(false);
   const lobbySnapshotRef = useRef<LobbyState | null>(null);
   const localHexOverridesRef = useRef(
     new Map<string, { owner: string; discoveredBy: string[]; structure?: LobbyState["mapHexes"][number]["structure"] }>()
@@ -182,12 +219,13 @@ function AppPage() {
     if (!publicClient || !gameCoreAddress || !gameCoreAbi) {
       setCraftCostHint(null);
       setVictoryAlloyTarget(null);
+      setChainLobbyPhaseDefaults(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const [costRaw, threshold] = await Promise.all([
+        const [costRaw, threshold, phaseDefaults] = await Promise.all([
           publicClient.readContract({
             address: gameCoreAddress,
             abi: gameCoreAbi,
@@ -199,16 +237,19 @@ function AppPage() {
             abi: gameCoreAbi,
             functionName: "getVictoryGoodsThreshold",
             args: []
-          } as any)
+          } as any),
+          readDefaultLobbyPhaseDurations(publicClient, gameCoreAddress, gameCoreAbi)
         ]);
         if (cancelled) return;
         // viem returns Solidity struct Resources as { food, wood, ... }, not a tuple array
         setCraftCostHint(formatCost(normalizeContractResources(costRaw ?? FALLBACK_CRAFT_ALLOY_COST)));
         setVictoryAlloyTarget(threshold != null ? Number(threshold as bigint) : 5);
+        setChainLobbyPhaseDefaults(phaseDefaults);
       } catch {
         if (!cancelled) {
           setCraftCostHint(formatCost(FALLBACK_CRAFT_ALLOY_COST));
           setVictoryAlloyTarget(5);
+          setChainLobbyPhaseDefaults(null);
         }
       }
     })();
@@ -565,6 +606,45 @@ function AppPage() {
     [activeLobby]
   );
 
+  useEffect(() => {
+    if (!isSpectator || !activeLobby || !publicClient || !gameCoreAddress || !gameCoreAbi) {
+      setSpectatorTradeFeed([]);
+      return;
+    }
+    if (activeLobby.status !== "running" && activeLobby.status !== "zero-round" && activeLobby.status !== "ended") {
+      setSpectatorTradeFeed([]);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      setSpectatorTradeFeedLoading(true);
+      try {
+        const items = await fetchLobbyTradeActivityLog(
+          publicClient,
+          gameCoreAddress,
+          gameCoreAbi,
+          BigInt(activeLobby.id),
+          0n
+        );
+        if (!cancelled) setSpectatorTradeFeed(items);
+      } catch {
+        if (!cancelled) setSpectatorTradeFeed([]);
+      } finally {
+        if (!cancelled) setSpectatorTradeFeedLoading(false);
+      }
+    };
+    void run();
+    const iv = setInterval(run, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
+  }, [isSpectator, activeLobby?.id, activeLobby?.status, publicClient, gameCoreAddress, gameCoreAbi]);
+
+  /**
+   * Running: wall-clock projection matches `GameCore._syncRoundFromTimestamp` (chain round + duration + `roundEndsAt`).
+   * Countdown ticks down locally to `nextDeadlineSec`; when past `roundEndsAt`, logical round jumps like the contract will on next tx.
+   */
   const projectedRound = useMemo(() => {
     if (!activeLobby) {
       return { index: 0, deadlineSec: null as number | null };
@@ -584,29 +664,38 @@ function AppPage() {
       };
     }
 
-    const startedAt = activeLobby.rounds.startedAt;
-    const duration = activeLobby.rounds.durationSeconds;
-    if (!startedAt || !duration || duration <= 0) {
-      return {
-        index: activeLobby.rounds.index,
-        deadlineSec: activeLobby.rounds.nextRoundAt
-      };
+    const R = activeLobby.rounds.index;
+    const E = activeLobby.rounds.nextRoundAt ?? 0;
+    const D = activeLobby.rounds.durationSeconds ?? 0;
+    if (D <= 0 || E <= 0) {
+      return { index: R, deadlineSec: E > 0 ? E : null };
     }
-
-    const elapsed = Math.max(0, nowSec - startedAt);
-    const extraRounds = Math.floor(elapsed / duration);
-    const projectedIndex = activeLobby.rounds.index + extraRounds;
-    const projectedDeadline = startedAt + (extraRounds + 1) * duration;
-
+    const { logicalRoundIndex, nextDeadlineSec } = projectRunningRoundClock({
+      chainRoundIndex: R,
+      roundEndsAt: E,
+      durationSeconds: D,
+      nowSec
+    });
     return {
-      index: projectedIndex,
-      deadlineSec: projectedDeadline
+      index: logicalRoundIndex,
+      deadlineSec: nextDeadlineSec
     };
   }, [activeLobby, nowSec]);
 
   const roundCountdown = projectedRound.deadlineSec
     ? Math.max(0, projectedRound.deadlineSec - nowSec)
     : null;
+
+  /**
+   * Round used for barter expiry / open count: same wall-clock projection as the header countdown
+   * (`projectRunningRoundClock`), so offers flip to expired when time passes even before the next hydrate.
+   */
+  const tradeRoundIndex = projectedRound.index;
+  const openTradeOffersCount = useMemo(() => {
+    const list = activeLobby?.barterOffers;
+    if (!list?.length) return 0;
+    return list.filter((o) => !o.accepted && tradeRoundIndex <= o.expiresAtRound).length;
+  }, [activeLobby?.barterOffers, tradeRoundIndex]);
 
   const agentAddressSet = useMemo(
     () => new Set(registryAgents.map((a) => a.address.toLowerCase())),
@@ -932,14 +1021,24 @@ function AppPage() {
             contractAddress: gameCoreAddress,
             contractAbi: gameCoreAbi,
             functionName: "startGame",
-            args: [BigInt(activeLobby.id), BigInt(300), BigInt(300), lobbyManagerAddress]
+            args: [
+              BigInt(activeLobby.id),
+              BigInt(chainLobbyPhaseDefaults?.zeroRoundSeconds ?? FALLBACK_LOBBY_ZERO_ROUND_SECONDS),
+              BigInt(chainLobbyPhaseDefaults?.runningRoundSeconds ?? FALLBACK_LOBBY_RUNNING_ROUND_SECONDS),
+              lobbyManagerAddress
+            ]
           })
         : await walletClient.writeContract({
             address: gameCoreAddress,
             abi: gameCoreAbi,
             functionName: "startGame",
             account: address,
-            args: [BigInt(activeLobby.id), BigInt(300), BigInt(300), lobbyManagerAddress]
+            args: [
+              BigInt(activeLobby.id),
+              BigInt(chainLobbyPhaseDefaults?.zeroRoundSeconds ?? FALLBACK_LOBBY_ZERO_ROUND_SECONDS),
+              BigInt(chainLobbyPhaseDefaults?.runningRoundSeconds ?? FALLBACK_LOBBY_RUNNING_ROUND_SECONDS),
+              lobbyManagerAddress
+            ]
           } as any);
       const gameStartReceipt = await publicClient.waitForTransactionReceipt({ hash: gameStartHash as `0x${string}` });
       if (gameStartReceipt.status !== "success") {
@@ -1136,7 +1235,7 @@ function AppPage() {
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
           functionName: "collect",
-          args: [lobbyId, payload.hexId ?? selectedForDetails?.id, BigInt(payload.amount || 10)]
+          args: [lobbyId, payload.hexId ?? selectedForDetails?.id]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:craft") {
@@ -1158,21 +1257,31 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "barter:create") {
+        setPendingAction("barter:create");
+        const taker = (payload.to as `0x${string}` | undefined) ?? ZERO_ADDRESS;
+        const expiry = BigInt(Math.max(1, Math.floor(Number(payload.expiryRounds ?? 2))));
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
           functionName: "createTrade",
-          args: [lobbyId, payload.to || "0x0000000000000000000000000000000000000000", payload.offer, payload.request, BigInt(2)]
+          args: [
+            lobbyId,
+            taker,
+            tradeResourcesTuple(payload.offer as Record<string, unknown>),
+            tradeResourcesTuple(payload.request as Record<string, unknown>),
+            expiry
+          ]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "barter:accept") {
+        setPendingAction("barter:accept");
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
           functionName: "acceptTrade",
-          args: [lobbyId, BigInt(payload.barterId)]
+          args: [lobbyId, BigInt(payload.barterId ?? payload.tradeId ?? 0)]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:create") {
@@ -1224,12 +1333,16 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:end-round") {
+        const roundSecs =
+          activeLobby.rounds.durationSeconds && activeLobby.rounds.durationSeconds > 0
+            ? activeLobby.rounds.durationSeconds
+            : chainLobbyPhaseDefaults?.runningRoundSeconds ?? FALLBACK_LOBBY_RUNNING_ROUND_SECONDS;
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
           functionName: "advanceRound",
-          args: [lobbyId, BigInt(300)]
+          args: [lobbyId, BigInt(roundSecs)]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       }
@@ -1268,18 +1381,43 @@ function AppPage() {
   const discoverCost = activeActionCosts?.discover ?? null;
   const buildCost = activeActionCosts?.build ?? null;
   const upgradeCost = activeActionCosts?.upgrade ?? null;
+  const collectEnergyForStructure =
+    selectedForDetails?.structure?.level === 2
+      ? activeActionCosts?.collectEnergyLevel2
+      : activeActionCosts?.collectEnergyLevel1;
+  const collectResourceYieldForStructure =
+    selectedForDetails?.structure?.level === 2
+      ? activeActionCosts?.collectResourceYieldLevel2
+      : activeActionCosts?.collectResourceYieldLevel1;
+  const collectEnergyKnown =
+    typeof collectEnergyForStructure === "number" && Number.isFinite(collectEnergyForStructure);
+  const collectYieldKnown =
+    typeof collectResourceYieldForStructure === "number" && Number.isFinite(collectResourceYieldForStructure);
+  const collectEnergyLabel = collectEnergyKnown
+    ? `energy ${collectEnergyForStructure}`
+    : activeActionCosts
+      ? "—"
+      : "loading...";
+  const collectGainLabel = collectYieldKnown ? `+${collectResourceYieldForStructure} basic (biome)` : "";
   const canDiscoverHere = Boolean(selectedForDetails && activeLobby?.status === "running" && !selectedForDetails.owner && isAdjacentToOwnedHex(activeLobby?.mapHexes ?? [], selectedForDetails, address));
   const canBuildHere = Boolean(selectedForDetails && isSelectedMine && !hasStructure);
   const canUpgradeHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure?.level === 1);
   const canDestroyHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure);
   const canCollectHere = Boolean(selectedForDetails && isSelectedMine && selectedForDetails.structure);
-  const selectedActionCost = canDiscoverHere
+  let selectedActionCost: string | null = canDiscoverHere
     ? discoverCost && formatCost(discoverCost)
     : canBuildHere
       ? buildCost && formatCost(buildCost)
       : canUpgradeHere
-      ? upgradeCost && formatCost(upgradeCost)
+        ? upgradeCost && formatCost(upgradeCost)
         : null;
+  if (canCollectHere && collectEnergyKnown) {
+    const collectHint =
+      collectYieldKnown && collectResourceYieldForStructure != null
+        ? `collect energy ${collectEnergyForStructure} · +${collectResourceYieldForStructure} basic (biome)`
+        : `collect energy ${collectEnergyForStructure}`;
+    selectedActionCost = selectedActionCost ? `${selectedActionCost} · ${collectHint}` : collectHint;
+  }
 
   const walletConnectConnector = connectors.find((c) => c.id === "injected") || connectors[0];
 
@@ -1472,6 +1610,8 @@ function AppPage() {
             viewerNeedsGameCoreJoin={Boolean(activeLobby.viewerNeedsGameCoreJoin && address)}
             onBack={() => navigate("/")}
           />
+          <SpectatorOnChainTrades offers={activeLobby.barterOffers} effectiveRoundIndex={tradeRoundIndex} shortAddr={short} />
+          <SpectatorTradeFeed items={spectatorTradeFeed} loading={spectatorTradeFeedLoading} />
         </aside>
       )}
 
@@ -1621,7 +1761,8 @@ function AppPage() {
           )}
           {canCollectHere && (
             <button onClick={() => action("game:collect", { hexId: activeActionHexId }, true)} disabled={!activeActionHexId}>
-              <CheckCircle2 size={16} /> Collect resources
+              <CheckCircle2 size={16} /> Collect resources (
+              {collectGainLabel ? `${collectEnergyLabel} · ${collectGainLabel}` : collectEnergyLabel})
             </button>
           )}
           {!selectedForDetails && <p className="selected-text">Select a hex to see actions.</p>}
@@ -1705,6 +1846,15 @@ function AppPage() {
 
         <div className="action-group">
           <h4>Trade</h4>
+          <button
+            type="button"
+            className="trade-offers-trigger"
+            onClick={() => setTradeOffersModalOpen(true)}
+          >
+            <ArrowRightLeft size={16} aria-hidden />
+            Trading offers
+            <span className="trade-offers-badge">{openTradeOffersCount}</span>
+          </button>
           <p className="selected-text">Broadcast a trade offer. Anyone can accept if they can pay the request.</p>
           <div className="trade-grid">
             <div>
@@ -1730,9 +1880,9 @@ function AppPage() {
             onClick={async () => {
               try {
                 await action("barter:create", {
-                  from: address,
-                  offer: Object.fromEntries(Object.entries(tradeOfferDraft).filter(([, value]) => value > 0)),
-                  request: Object.fromEntries(Object.entries(tradeRequestDraft).filter(([, value]) => value > 0))
+                  to: ZERO_ADDRESS,
+                  offer: { ...tradeOfferDraft },
+                  request: { ...tradeRequestDraft }
                 });
               } catch (e: any) {
                 setError(e.message);
@@ -1741,29 +1891,6 @@ function AppPage() {
           >
             <ArrowRightLeft size={16} /> Send trade
           </button>
-
-          {activeLobby.barterOffers
-            .filter((b: any) => b.status === "pending")
-            .slice(0, 4)
-            .map((barter: any) => (
-              <motion.button
-                key={barter.id}
-                whileHover={{ scale: 1.03 }}
-                onClick={async () => {
-                  try {
-                    await action("barter:accept", {
-                      lobbyId: activeLobby.id,
-                      barterId: barter.id,
-                      by: address
-                    });
-                  } catch (e: any) {
-                    setError(e.message);
-                  }
-                }}
-              >
-                Accept trade from {short(barter.from)}
-              </motion.button>
-            ))}
         </div>
 
         <div className="action-group">
@@ -1857,6 +1984,26 @@ function AppPage() {
           ))}
         </div>
       </aside>
+      ) : null}
+
+      {!isSpectator ? (
+        <TradeOffersModal
+          open={tradeOffersModalOpen}
+          onClose={() => setTradeOffersModalOpen(false)}
+          offers={activeLobby.barterOffers}
+          currentRoundIndex={tradeRoundIndex}
+          viewerAddress={address}
+          shortAddr={short}
+          acceptPending={pendingAction === "barter:accept"}
+          onAccept={async (tradeId) => {
+            try {
+              await action("barter:accept", { barterId: tradeId });
+              setTradeOffersModalOpen(false);
+            } catch (e: any) {
+              setError(e.message);
+            }
+          }}
+        />
       ) : null}
     </div>
   );

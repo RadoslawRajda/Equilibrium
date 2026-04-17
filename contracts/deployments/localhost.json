@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-12T14:33:48.930Z",
+  "deployedAt": "2026-04-12T20:13:03.500Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -6996,11 +6996,6 @@
               "internalType": "string",
               "name": "hexId",
               "type": "string"
-            },
-            {
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
             }
           ],
           "name": "collect",
@@ -7350,6 +7345,24 @@
               "internalType": "struct GameCore.Resources",
               "name": "",
               "type": "tuple"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getDefaultLobbyPhaseDurations",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "zeroRoundSeconds",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "runningRoundSeconds",
+              "type": "uint256"
             }
           ],
           "stateMutability": "pure",
@@ -7785,6 +7798,25 @@
           "type": "function"
         },
         {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "getTradeCount",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
           "inputs": [],
           "name": "getUpgradeCost",
           "outputs": [
@@ -7963,6 +7995,25 @@
             }
           ],
           "name": "previewCollectionEnergyCost",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint8",
+              "name": "structureLevel",
+              "type": "uint8"
+            }
+          ],
+          "name": "previewCollectionResourceYield",
           "outputs": [
             {
               "internalType": "uint256",

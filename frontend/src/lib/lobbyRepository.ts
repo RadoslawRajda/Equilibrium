@@ -1,6 +1,6 @@
 import { formatEther } from "viem";
 
-import type { HexTile, LobbyState } from "../types";
+import type { HexTile, LobbyState, TradeOfferView } from "../types";
 import {
   buildPlayerState,
   emptyResources,
@@ -14,6 +14,21 @@ import {
   readMapConfigTuple,
   type ActionCosts
 } from "./gameUtils";
+
+function parseGetTradeTuple(raw: unknown, id: number): TradeOfferView | null {
+  if (!Array.isArray(raw) || raw.length < 15) return null;
+  const n = (i: number) => Math.max(0, Math.floor(Number(raw[i] ?? 0)));
+  return {
+    id,
+    maker: String(raw[0]),
+    taker: String(raw[1]),
+    accepted: Boolean(raw[2]),
+    createdAtRound: n(3),
+    expiresAtRound: n(4),
+    offer: { food: n(5), wood: n(6), stone: n(7), ore: n(8), energy: n(9) },
+    request: { food: n(10), wood: n(11), stone: n(12), ore: n(13), energy: n(14) }
+  };
+}
 
 export type LobbySummary = {
   id: string;
@@ -285,69 +300,159 @@ export class LobbyRepository {
       const playerAddressList =
         status !== "waiting" && status !== "cancelled" && gcPlayers.length > 0 ? gcPlayers : lmPlayers;
 
-      const [playerResources, viewerCraftedGoods] = await Promise.all([
-        viewerAddress
-          ? publicClient
-              .readContract({
+      /** Spectator / sidebar: load every roster player's economy from GameCore (not only the connected wallet). */
+      const fetchAllPlayersEconomy =
+        playerAddressList.length > 0 &&
+        gcPlayers.length > 0 &&
+        (status === "zero-round" || status === "running" || status === "ended");
+
+      let playerResources: unknown = null;
+      let viewerCraftedGoods = 0n;
+      const resourcesByAddr: Record<string, ReturnType<typeof normalizeContractResources>> = {};
+      const craftedByAddr: Record<string, number> = {};
+
+      if (fetchAllPlayersEconomy) {
+        const [resBatch, goodsBatch] = await Promise.all([
+          Promise.all(
+            playerAddressList.map((addr) =>
+              publicClient
+                .readContract({
+                  address: gameCoreAddress,
+                  abi: gameCoreAbi,
+                  functionName: "getPlayerResources",
+                  args: [BigInt(lobbyId), addr as `0x${string}`]
+                } as any)
+                .catch(() => null)
+            )
+          ),
+          Promise.all(
+            playerAddressList.map((addr) =>
+              publicClient
+                .readContract({
+                  address: gameCoreAddress,
+                  abi: gameCoreAbi,
+                  functionName: "getPlayerCraftedGoods",
+                  args: [BigInt(lobbyId), addr as `0x${string}`]
+                } as any)
+                .then((g: unknown) => Number(g ?? 0))
+                .catch(() => 0)
+            )
+          )
+        ]);
+        playerAddressList.forEach((addr, i) => {
+          const k = addr.toLowerCase();
+          const raw = resBatch[i];
+          resourcesByAddr[k] = raw ? normalizeContractResources(raw) : emptyResources();
+          craftedByAddr[k] = goodsBatch[i] ?? 0;
+        });
+        if (viewerAddress) {
+          const vk = viewerAddress.toLowerCase();
+          const vi = playerAddressList.findIndex((a) => a.toLowerCase() === vk);
+          playerResources = vi >= 0 ? resBatch[vi] : null;
+          viewerCraftedGoods = BigInt(Math.floor(craftedByAddr[vk] ?? 0));
+        }
+      } else {
+        const [pr, vcg] = await Promise.all([
+          viewerAddress
+            ? publicClient
+                .readContract({
+                  address: gameCoreAddress,
+                  abi: gameCoreAbi,
+                  functionName: "getPlayerResources",
+                  args: [BigInt(lobbyId), viewerAddress]
+                } as any)
+                .catch(() => null)
+            : Promise.resolve(null),
+          viewerAddress
+            ? publicClient
+                .readContract({
+                  address: gameCoreAddress,
+                  abi: gameCoreAbi,
+                  functionName: "getPlayerCraftedGoods",
+                  args: [BigInt(lobbyId), viewerAddress]
+                } as any)
+                .catch(() => 0n)
+            : Promise.resolve(0n)
+        ]);
+        playerResources = pr;
+        viewerCraftedGoods = vcg as bigint;
+      }
+      const [buildCostRaw, upgradeCostRaw, discoverCostRaw, bankBulkMaxRaw, collectE1Raw, collectE2Raw, collectY1Raw, collectY2Raw] =
+        await Promise.all([
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getBuildCost"
+          } as any).catch(() => null),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getUpgradeCost"
+          } as any).catch(() => null),
+          viewerAddress
+            ? publicClient.readContract({
                 address: gameCoreAddress,
                 abi: gameCoreAbi,
-                functionName: "getPlayerResources",
+                functionName: "previewDiscoverCost",
                 args: [BigInt(lobbyId), viewerAddress]
-              } as any)
-              .catch(() => null)
-          : Promise.resolve(null),
-        viewerAddress
-          ? publicClient
-              .readContract({
-                address: gameCoreAddress,
-                abi: gameCoreAbi,
-                functionName: "getPlayerCraftedGoods",
-                args: [BigInt(lobbyId), viewerAddress]
-              } as any)
-              .catch(() => 0n)
-          : Promise.resolve(0n)
-      ]);
-      const [buildCostRaw, upgradeCostRaw, discoverCostRaw, bankBulkMaxRaw] = await Promise.all([
-        publicClient.readContract({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
-          functionName: "getBuildCost"
-        } as any).catch(() => null),
-        publicClient.readContract({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
-          functionName: "getUpgradeCost"
-        } as any).catch(() => null),
-        viewerAddress
-          ? publicClient.readContract({
-              address: gameCoreAddress,
-              abi: gameCoreAbi,
-              functionName: "previewDiscoverCost",
-              args: [BigInt(lobbyId), viewerAddress]
-            } as any).catch(() => null)
-          : null,
-        publicClient.readContract({
-          address: gameCoreAddress,
-          abi: gameCoreAbi,
-          functionName: "getBankTradeBulkMaxLots"
-        } as any).catch(() => 48n)
-      ]);
+              } as any).catch(() => null)
+            : null,
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getBankTradeBulkMaxLots"
+          } as any).catch(() => 48n),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "previewCollectionEnergyCost",
+            args: [1n]
+          } as any).catch(() => null),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "previewCollectionEnergyCost",
+            args: [2n]
+          } as any).catch(() => null),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "previewCollectionResourceYield",
+            args: [1]
+          } as any).catch(() => null),
+          publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "previewCollectionResourceYield",
+            args: [2]
+          } as any).catch(() => null)
+        ]);
       const bankTradeBulkMaxLots = Math.max(1, Number(bankBulkMaxRaw ?? 48n));
 
       const emptyCost = () => ({ food: 0, wood: 0, stone: 0, ore: 0, energy: 0 });
+      const nCollectEnergy = (raw: unknown, fallback: number) => {
+        const n = typeof raw === "bigint" ? Number(raw) : Number(raw);
+        return Number.isFinite(n) && n >= 0 ? n : fallback;
+      };
       const actionCosts: ActionCosts | null =
         buildCostRaw && upgradeCostRaw
           ? {
               build: normalizeContractResources(buildCostRaw),
               upgrade: normalizeContractResources(upgradeCostRaw),
-              discover: discoverCostRaw ? normalizeContractResources(discoverCostRaw) : emptyCost()
+              discover: discoverCostRaw ? normalizeContractResources(discoverCostRaw) : emptyCost(),
+              collectEnergyLevel1: nCollectEnergy(collectE1Raw, 10),
+              collectEnergyLevel2: nCollectEnergy(collectE2Raw, 20),
+              collectResourceYieldLevel1: nCollectEnergy(collectY1Raw, 30),
+              collectResourceYieldLevel2: nCollectEnergy(collectY2Raw, 45)
             }
           : null;
 
       const craftedNum = Number(viewerCraftedGoods) || 0;
 
       const craftedGoodsByAddress: Record<string, number> = {};
-      if (status === "ended" && playerAddressList.length > 0) {
+      if (fetchAllPlayersEconomy) {
+        Object.assign(craftedGoodsByAddress, craftedByAddr);
+      } else if (status === "ended" && playerAddressList.length > 0) {
         const goodsResults = await Promise.all(
           playerAddressList.map((playerAddress) =>
             publicClient
@@ -384,18 +489,21 @@ export class LobbyRepository {
           : [];
       const players = playerAddressList.map((playerAddress, index) => {
         const isViewer = viewerAddress?.toLowerCase() === playerAddress.toLowerCase();
+        const key = playerAddress.toLowerCase();
         const crafted =
           status === "ended"
-            ? craftedGoodsByAddress[playerAddress.toLowerCase()] ?? 0
-            : isViewer
-              ? craftedNum
-              : 0;
-        return buildPlayerState(
-          playerAddress,
-          isViewer && playerResources ? normalizeContractResources(playerResources) : emptyResources(),
-          crafted,
-          aliveFlags[index] !== false
-        );
+            ? craftedGoodsByAddress[key] ?? 0
+            : fetchAllPlayersEconomy
+              ? craftedByAddr[key] ?? 0
+              : isViewer
+                ? craftedNum
+                : 0;
+        const resources = fetchAllPlayersEconomy
+          ? resourcesByAddr[key] ?? emptyResources()
+          : isViewer && playerResources
+            ? normalizeContractResources(playerResources)
+            : emptyResources();
+        return buildPlayerState(playerAddress, resources, crafted, aliveFlags[index] !== false);
       });
 
       let inferredWinnerAddress: string | null = null;
@@ -562,6 +670,39 @@ export class LobbyRepository {
         globalVotes = [];
       }
 
+      let barterOffers: TradeOfferView[] = [];
+      if (status === "running" || status === "ended" || status === "zero-round") {
+        try {
+          const countRaw = await publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getTradeCount",
+            args: [BigInt(lobbyId)]
+          } as any);
+          const count = Math.min(Math.max(0, Number(countRaw ?? 0)), 96);
+          if (count > 0) {
+            const tradeRows = await Promise.all(
+              Array.from({ length: count }, (_, i) =>
+                publicClient
+                  .readContract({
+                    address: gameCoreAddress,
+                    abi: gameCoreAbi,
+                    functionName: "getTrade",
+                    args: [BigInt(lobbyId), BigInt(i)]
+                  } as any)
+                  .catch(() => null)
+              )
+            );
+            tradeRows.forEach((raw, i) => {
+              const row = parseGetTradeTuple(raw, i);
+              if (row) barterOffers.push(row);
+            });
+          }
+        } catch {
+          barterOffers = [];
+        }
+      }
+
       return {
         lobby: {
           id: lobbyId,
@@ -579,7 +720,7 @@ export class LobbyRepository {
           mapHexes,
           activeEffects: [],
           globalVotes,
-          barterOffers: [],
+          barterOffers,
           logs: [],
           pendingEarthquake: null,
           prizePool: formatEther(prizePool)

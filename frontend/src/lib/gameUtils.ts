@@ -1,4 +1,5 @@
 import { encodePacked, keccak256 } from "viem";
+import type { PublicClient } from "viem";
 
 import type { HexTile, LobbyState, ResourceKey } from "../types";
 
@@ -25,6 +26,14 @@ export type ActionCosts = {
   discover: ActionCost;
   build: ActionCost;
   upgrade: ActionCost;
+  /** `GameCore.previewCollectionEnergyCost(1)` */
+  collectEnergyLevel1: number;
+  /** `GameCore.previewCollectionEnergyCost(2)` */
+  collectEnergyLevel2: number;
+  /** `GameCore.previewCollectionResourceYield(1)` — biome picks which basic resource */
+  collectResourceYieldLevel1: number;
+  /** `GameCore.previewCollectionResourceYield(2)` */
+  collectResourceYieldLevel2: number;
 };
 
 export const short = (address?: string) => (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "?");
@@ -249,6 +258,37 @@ export const readLobbyRoundTuple = (raw: unknown): LobbyRoundTuple | null => {
   }
   return null;
 };
+
+/** `GameCore.getDefaultLobbyPhaseDurations` — wall-clock defaults from `GameConfig` (same source as host `startGame` tuning). */
+export async function readDefaultLobbyPhaseDurations(
+  publicClient: PublicClient,
+  gameCore: `0x${string}`,
+  gameCoreAbi: readonly unknown[]
+): Promise<{ zeroRoundSeconds: number; runningRoundSeconds: number } | null> {
+  try {
+    const raw = await publicClient.readContract({
+      address: gameCore,
+      abi: gameCoreAbi as any,
+      functionName: "getDefaultLobbyPhaseDurations",
+      args: []
+    });
+    if (raw == null) return null;
+    if (Array.isArray(raw) && raw.length >= 2) {
+      return { zeroRoundSeconds: Number(raw[0]), runningRoundSeconds: Number(raw[1]) };
+    }
+    if (typeof raw === "object") {
+      const o = raw as Record<string, unknown>;
+      const z = o.zeroRoundSeconds ?? o[0];
+      const r = o.runningRoundSeconds ?? o[1];
+      if (z != null && r != null) {
+        return { zeroRoundSeconds: Number(z), runningRoundSeconds: Number(r) };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export const readMapConfigTuple = (raw: unknown): { seed: bigint; radius: number } | null => {
   if (raw == null) return null;

@@ -1,3 +1,21 @@
+# Single build for `cryptocatan/player-agent:local` — four runtime services share this image.
+# (Defining `build` on each bot triggers parallel builds and a race: "image already exists".)
+x-player-runtime: &player-runtime
+  image: cryptocatan/player-agent:local
+  volumes:
+    - ./contracts/deployments:/contracts/deployments:ro
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  depends_on:
+    ganache:
+      condition: service_started
+    hardhat:
+      condition: service_started
+    agent-registry:
+      condition: service_started
+    player-agent-image:
+      condition: service_completed_successfully
+
 services:
   ganache:
     image: ghcr.io/foundry-rs/foundry:latest
@@ -15,7 +33,7 @@ services:
       - --chain-id
       - "1337"
       - --accounts
-      - "12"
+      - "16"
       - --balance
       - "1000"
       - --block-time
@@ -31,7 +49,8 @@ services:
       - ./contracts:/app
     command: >
       sh -c "export HARDHAT_DISABLE_TELEMETRY=true && export HARDHAT_DISABLE_TELEMETRY_PROMPT=true && npm install &&
-      npx hardhat run scripts/deploy.js --network ganache --no-compile &&
+      npx hardhat compile &&
+      npx hardhat run scripts/deploy.js --network ganache &&
       tail -f /dev/null"
     depends_on:
       - ganache
@@ -78,8 +97,14 @@ services:
     ports:
       - "4050:4050"
 
+  player-agent-image:
+    image: cryptocatan/player-agent:local
+    build: ./agents/player
+    restart: "no"
+    entrypoint: ["/bin/true"]
+
   equinox-agent:
-    build: ./agents/equinox-player
+    <<: *player-runtime
     environment:
       RPC_URL: http://ganache:8545
       REGISTRY_URL: http://agent-registry:4050
@@ -90,14 +115,49 @@ services:
       DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
       POLL_MS: "8000"
       AGENT_NAME: Equinox
-    volumes:
-      - ./contracts/deployments:/contracts/deployments:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - ganache
-      - hardhat
-      - agent-registry
+      PLAYER_IDENTITY_PATH: personas/equinox.md
+
+  aurora-agent:
+    <<: *player-runtime
+    environment:
+      RPC_URL: http://ganache:8545
+      REGISTRY_URL: http://agent-registry:4050
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      AGENT_ACCOUNT_INDEX: "11"
+      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
+      POLL_MS: "8200"
+      AGENT_NAME: Aurora
+      PLAYER_IDENTITY_PATH: personas/aurora.md
+
+  crucible-agent:
+    <<: *player-runtime
+    environment:
+      RPC_URL: http://ganache:8545
+      REGISTRY_URL: http://agent-registry:4050
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      AGENT_ACCOUNT_INDEX: "12"
+      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
+      POLL_MS: "8400"
+      AGENT_NAME: Crucible
+      PLAYER_IDENTITY_PATH: personas/crucible.md
+
+  drift-agent:
+    <<: *player-runtime
+    environment:
+      RPC_URL: http://ganache:8545
+      REGISTRY_URL: http://agent-registry:4050
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      AGENT_ACCOUNT_INDEX: "13"
+      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
+      POLL_MS: "8600"
+      AGENT_NAME: Drift
+      PLAYER_IDENTITY_PATH: personas/drift.md
 
   frontend:
     image: node:20-alpine

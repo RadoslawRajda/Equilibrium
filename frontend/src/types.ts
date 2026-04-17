@@ -25,6 +25,20 @@ export type PlayerState = {
   craftedGoods?: number;
 };
 
+/** On-chain `GameCore.getTrade` row for UI (lobby-scoped). */
+export type TradeOfferView = {
+  id: number;
+  maker: string;
+  /** `0x000…0` means any player may accept */
+  taker: string;
+  accepted: boolean;
+  createdAtRound: number;
+  /** Inclusive: valid while effective (projected) round ≤ this; see `projectRunningRoundClock` in UI. */
+  expiresAtRound: number;
+  offer: Record<ResourceKey, number>;
+  request: Record<ResourceKey, number>;
+};
+
 export type LobbyState = {
   id: string;
   name: string;
@@ -53,7 +67,7 @@ export type LobbyState = {
   mapHexes: HexTile[];
   activeEffects: Array<{ id: string; label: string; remainingRounds: number }>;
   globalVotes: any[];
-  barterOffers: any[];
+  barterOffers: TradeOfferView[];
   logs: Array<{ id: string; type: string; text: string; timestamp: number }>;
   pendingEarthquake: { atRound: number; targets: string[] } | null;
 };

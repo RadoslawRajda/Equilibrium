@@ -1,0 +1,6 @@
+/**
+ * Last-resort fallbacks when RPC/`GameCore.getDefaultLobbyPhaseDurations` is unavailable
+ * (stale ABI, wrong address). Keep aligned with `contracts/contracts/GameConfig.sol`.
+ */
+export const FALLBACK_LOBBY_ZERO_ROUND_SECONDS = 200;
+export const FALLBACK_LOBBY_RUNNING_ROUND_SECONDS = 200;

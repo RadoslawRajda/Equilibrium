@@ -289,7 +289,7 @@ describe("GameCore gameplay", function () {
     await expect(gameCore.connect(outsider).buildStructure(1, tile.hexId))
       .to.be.revertedWith("Not owner");
 
-    await expect(gameCore.connect(host).collect(1, tile.hexId, 30))
+    await expect(gameCore.connect(host).collect(1, tile.hexId))
       .to.be.revertedWith("Production starts next round");
 
     await mineSeconds(300);
@@ -297,13 +297,13 @@ describe("GameCore gameplay", function () {
       .to.emit(gameCore, "RoundAdvanced");
 
     const beforeResources = await gameCore.getPlayerResources(1, host.address);
-    await expect(gameCore.connect(host).collect(1, tile.hexId, 30))
+    await expect(gameCore.connect(host).collect(1, tile.hexId))
       .to.emit(gameCore, "ResourcesCollected")
       .withArgs(1n, host.address, tile.hexId, resourceKey, 30n);
 
     const afterResources = await gameCore.getPlayerResources(1, host.address);
     expect(afterResources[resourceIndex]).to.equal(beforeResources[resourceIndex] + 30n);
-    expect(afterResources[4]).to.equal(beforeResources[4] - 8n);
+    expect(afterResources[4]).to.equal(beforeResources[4] - 10n);
 
     /** After build, basics are 13/13/13/18; upgrade needs 14/14/14 (food/stone/ore). Collect on Plains fixes food; one 4:1 bank trade (ore→stone) fixes stone. */
     await gameCore.connect(host).tradeWithBank(1, 3, 2);
@@ -434,8 +434,15 @@ describe("GameCore gameplay", function () {
   it("exposes the collection energy cost by structure level", async function () {
     const { gameCore } = await deploySystem();
 
-    expect(await gameCore.previewCollectionEnergyCost(1)).to.equal(8n);
-    expect(await gameCore.previewCollectionEnergyCost(2)).to.equal(16n);
+    expect(await gameCore.previewCollectionEnergyCost(1)).to.equal(10n);
+    expect(await gameCore.previewCollectionEnergyCost(2)).to.equal(20n);
+  });
+
+  it("exposes the collection resource yield by structure level", async function () {
+    const { gameCore } = await deploySystem();
+
+    expect(await gameCore.previewCollectionResourceYield(1)).to.equal(30n);
+    expect(await gameCore.previewCollectionResourceYield(2)).to.equal(45n);
   });
 
   it("supports unanimous end-round voting and advances the round immediately", async function () {

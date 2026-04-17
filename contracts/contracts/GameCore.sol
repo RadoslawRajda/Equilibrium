@@ -309,6 +309,10 @@ contract GameCore is ActorAware {
         return GameConfig.collectionEnergyCost(structureLevel);
     }
 
+    function previewCollectionResourceYield(uint8 structureLevel) external pure returns (uint256) {
+        return GameConfig.collectionResourceYield(structureLevel);
+    }
+
     function _startingResources() internal pure returns (Resources memory startingResources) {
         (startingResources.food, startingResources.wood, startingResources.stone, startingResources.ore, startingResources.energy) = GameConfig.startingResources();
     }
@@ -459,6 +463,7 @@ contract GameCore is ActorAware {
         Lobby storage lobby = lobbies[lobbyId];
         require(lobby.host != address(0), "Lobby not found");
         address player = _actor();
+        require(ILobbyManagerSync(lobbyManager).hasTicket(lobbyId, player), "No lobby ticket");
         if (!lobby.playerState[player].exists) {
             lobby.players.push(player);
             lobby.playerState[player] = _createPlayerState();
@@ -606,7 +611,7 @@ contract GameCore is ActorAware {
         emit StructureDestroyed(lobbyId, playerAddress, hexId);
     }
 
-    function collect(uint256 lobbyId, string calldata hexId, uint256 amount) external {
+    function collect(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
         _requireNotEnded(lobby);
@@ -623,6 +628,7 @@ contract GameCore is ActorAware {
         uint256 energyCost = GameConfig.collectionEnergyCost(tile.structure.level);
         require(player.resources.energy >= energyCost, "Not enough energy");
         player.resources.energy -= energyCost;
+        uint256 amount = GameConfig.collectionResourceYield(tile.structure.level);
         string memory resourceKey = _resourceKeyForBiome(tile.biome);
         if (keccak256(bytes(resourceKey)) == keccak256(bytes("food"))) player.resources.food += amount;
         else if (keccak256(bytes(resourceKey)) == keccak256(bytes("wood"))) player.resources.wood += amount;
@@ -843,6 +849,11 @@ contract GameCore is ActorAware {
         return GameConfig.victoryGoodsThreshold();
     }
 
+    /// @notice Default phase lengths for hosts calling `startGame` — sourced from `GameConfig` (single tuning knob with `endRoundAdvanceSeconds`).
+    function getDefaultLobbyPhaseDurations() external pure returns (uint256 zeroRoundSeconds, uint256 runningRoundSeconds) {
+        return (GameConfig.defaultZeroRoundSeconds(), GameConfig.defaultRunningRoundSeconds());
+    }
+
     function getProposalCount(uint256 lobbyId) external view returns (uint256) {
         return lobbies[lobbyId].proposals.length;
     }
@@ -978,6 +989,10 @@ contract GameCore is ActorAware {
     function isPlayerAlive(uint256 lobbyId, address player) external view returns (bool) {
         Player storage p = lobbies[lobbyId].playerState[player];
         return p.exists && p.alive;
+    }
+
+    function getTradeCount(uint256 lobbyId) external view returns (uint256) {
+        return lobbies[lobbyId].trades.length;
     }
 
     function getTrade(

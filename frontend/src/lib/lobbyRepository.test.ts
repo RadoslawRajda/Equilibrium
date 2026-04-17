@@ -72,6 +72,10 @@ describe("LobbyRepository", () => {
         if (functionName === "getBuildCost") return [10n, 10n, 10n, 0n, 0n];
         if (functionName === "getUpgradeCost") return [30n, 0n, 30n, 30n, 0n];
         if (functionName === "previewDiscoverCost" && args?.[1] === viewerAddress) return [40n, 40n, 40n, 40n, 0n];
+        if (functionName === "previewCollectionEnergyCost" && args?.[0] === 1n) return 10n;
+        if (functionName === "previewCollectionEnergyCost" && args?.[0] === 2n) return 20n;
+        if (functionName === "previewCollectionResourceYield" && args?.[0] === 1) return 30n;
+        if (functionName === "previewCollectionResourceYield" && args?.[0] === 2) return 45n;
         if (functionName === "getBankTradeBulkMaxLots") return 48n;
         if (functionName === "hasTicket" && args?.[1]?.toLowerCase?.() === viewerAddress.toLowerCase()) return true;
         if (functionName === "hasTicket") return false;
@@ -105,6 +109,10 @@ describe("LobbyRepository", () => {
       energy: 10
     });
     expect(hydrated?.actionCosts?.discover.food).toBe(40);
+    expect(hydrated?.actionCosts?.collectEnergyLevel1).toBe(10);
+    expect(hydrated?.actionCosts?.collectEnergyLevel2).toBe(20);
+    expect(hydrated?.actionCosts?.collectResourceYieldLevel1).toBe(30);
+    expect(hydrated?.actionCosts?.collectResourceYieldLevel2).toBe(45);
     expect(hydrated?.bankTradeBulkMaxLots).toBe(48);
   });
 
@@ -137,7 +145,7 @@ describe("LobbyRepository", () => {
         if (functionName === "getLobbyPlayers" && address?.toLowerCase() === gc.toLowerCase()) {
           return [viewerAddress];
         }
-        if (functionName === "getLobbyRound") return [1n, 0n, 0n, 2n, 0n, 300n];
+        if (functionName === "getLobbyRound") return [1n, 0n, 0n, 2n, 0n, 200n];
         if (functionName === "getMapConfig") return null;
         if (functionName === "getPlayerResources") return [18n, 18n, 18n, 18n, 36n];
         if (functionName === "getPlayerCraftedGoods") return 0n;
@@ -146,6 +154,10 @@ describe("LobbyRepository", () => {
         if (functionName === "getBuildCost") return [5n, 5n, 5n, 0n, 0n];
         if (functionName === "getUpgradeCost") return [14n, 0n, 14n, 14n, 0n];
         if (functionName === "previewDiscoverCost") return [18n, 18n, 18n, 18n, 0n];
+        if (functionName === "previewCollectionEnergyCost" && args?.[0] === 1n) return 10n;
+        if (functionName === "previewCollectionEnergyCost" && args?.[0] === 2n) return 20n;
+        if (functionName === "previewCollectionResourceYield" && args?.[0] === 1) return 30n;
+        if (functionName === "previewCollectionResourceYield" && args?.[0] === 2) return 45n;
         if (functionName === "getBankTradeBulkMaxLots") return 48n;
         if (functionName === "hasTicket" && args?.[1]?.toLowerCase?.() === ghostTicket.toLowerCase()) return true;
         if (functionName === "hasTicket" && args?.[1]?.toLowerCase?.() === viewerAddress.toLowerCase()) return true;
@@ -201,7 +213,7 @@ describe("LobbyRepository", () => {
         if (functionName === "getLobbyPlayers" && req.address?.toLowerCase() === gc.toLowerCase()) {
           return ["0x2222222222222222222222222222222222222222"];
         }
-        if (functionName === "getLobbyRound") return [1n, 0n, 0n, 2n, 0n, 300n];
+        if (functionName === "getLobbyRound") return [1n, 0n, 0n, 2n, 0n, 200n];
         if (functionName === "getMapConfig") return null;
         if (functionName === "getPlayerResources") return [0n, 0n, 0n, 0n, 0n];
         if (functionName === "getPlayerCraftedGoods") return 0n;
@@ -210,6 +222,10 @@ describe("LobbyRepository", () => {
         if (functionName === "getBuildCost") return [5n, 5n, 5n, 0n, 0n];
         if (functionName === "getUpgradeCost") return [14n, 0n, 14n, 14n, 0n];
         if (functionName === "previewDiscoverCost") return [18n, 18n, 18n, 18n, 0n];
+        if (functionName === "previewCollectionEnergyCost" && args?.[0] === 1n) return 10n;
+        if (functionName === "previewCollectionEnergyCost" && args?.[0] === 2n) return 20n;
+        if (functionName === "previewCollectionResourceYield" && args?.[0] === 1) return 30n;
+        if (functionName === "previewCollectionResourceYield" && args?.[0] === 2) return 45n;
         if (functionName === "getBankTradeBulkMaxLots") return 48n;
         if (functionName === "hasTicket" && args?.[1]?.toLowerCase?.() === viewerAddress.toLowerCase()) return true;
         if (functionName === "hasTicket") return false;
