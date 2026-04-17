@@ -7,7 +7,11 @@ import {
   gameStatusToLabel,
   generateLocalMap,
   managerStatusToLabel,
+  normalizeContractResources,
   normalizeOwner,
+  parseHexTileContractResult,
+  readLobbyRoundTuple,
+  readMapConfigTuple,
   type ActionCosts
 } from "./gameUtils";
 
@@ -20,10 +24,19 @@ export type LobbySummary = {
   prizePool: string;
 };
 
+export type LoadSummariesResult = {
+  lobbies: LobbySummary[];
+  /** LobbyManager bytecode missing at configured address (wrong chain / not deployed). */
+  lobbyManagerMissing?: boolean;
+  /** Contract present but getLobbyCount or follow-up reads failed (stale ABI, etc.). */
+  readFailed?: boolean;
+};
+
 type HexOverride = {
   owner: string;
   discoveredBy: string[];
-  structure: LobbyState["mapHexes"][number]["structure"];
+  /** If set, overrides chain; omit so builds/upgrades read from chain after sync */
+  structure?: LobbyState["mapHexes"][number]["structure"];
 };
 
 export type ChainReadContext = {
@@ -39,9 +52,24 @@ export type ChainReadContext = {
 export class LobbyRepository {
   constructor(private readonly context: ChainReadContext) {}
 
-  async loadSummaries(): Promise<LobbySummary[]> {
+  /** True if bytecode exists at the configured LobbyManager address (same RPC as the app). */
+  async isLobbyManagerDeployed(): Promise<boolean> {
+    const { publicClient, lobbyManagerAddress } = this.context;
+    if (!publicClient || !lobbyManagerAddress) return false;
+    const code = await publicClient.getBytecode({ address: lobbyManagerAddress }).catch(() => undefined);
+    return Boolean(code && code !== "0x");
+  }
+
+  async loadSummaries(): Promise<LoadSummariesResult> {
     const { publicClient, lobbyManagerAddress, lobbyManagerAbi } = this.context;
-    if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi) return [];
+    if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi) {
+      return { lobbies: [] };
+    }
+
+    const code = await publicClient.getBytecode({ address: lobbyManagerAddress }).catch(() => undefined);
+    if (!code || code === "0x") {
+      return { lobbies: [], lobbyManagerMissing: true };
+    }
 
     let lobbyCount = 0;
     try {
@@ -52,7 +80,7 @@ export class LobbyRepository {
       } as any));
     } catch (error) {
       console.error("Failed to load lobbies from chain. ABI/address might be out of sync.", error);
-      return [];
+      return { lobbies: [], readFailed: true };
     }
 
     const summaries = await Promise.all(
@@ -81,7 +109,7 @@ export class LobbyRepository {
       })
     );
 
-    return summaries.filter((summary): summary is LobbySummary => summary !== null);
+    return { lobbies: summaries.filter((summary): summary is LobbySummary => summary !== null) };
   }
 
   async loadLobbyState(
@@ -98,6 +126,14 @@ export class LobbyRepository {
     } = this.context;
 
     if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi || !gameCoreAddress || !gameCoreAbi) {
+      return null;
+    }
+
+    const [lmCode, gcCode] = await Promise.all([
+      publicClient.getBytecode({ address: lobbyManagerAddress }).catch(() => undefined as string | undefined),
+      publicClient.getBytecode({ address: gameCoreAddress }).catch(() => undefined as string | undefined)
+    ]);
+    if (!lmCode || lmCode === "0x" || !gcCode || gcCode === "0x") {
       return null;
     }
 
@@ -131,14 +167,15 @@ export class LobbyRepository {
 
       const [host, name, , , prizePool] = lobbyData as [string, string, bigint, bigint, bigint, bigint, string];
       const playerAddressList = playerAddresses as string[];
-      const gameStatus = roundData ? Number((roundData as any)[3]) : null;
-      const rounds = roundData
+      const roundParsed = readLobbyRoundTuple(roundData);
+      const gameStatus = roundParsed ? roundParsed.status : null;
+      const rounds = roundParsed
         ? {
-            index: Number((roundData as any)[0]),
-            startedAt: Number((roundData as any)[4] ?? 0) || null,
-            durationSeconds: Number((roundData as any)[5] ?? 0) || null,
-            nextRoundAt: Number((roundData as any)[1] ?? 0) || null,
-            zeroRoundEndsAt: Number((roundData as any)[2] ?? 0) || null
+            index: roundParsed.roundIndex,
+            startedAt: roundParsed.roundStartedAt || null,
+            durationSeconds: roundParsed.roundDurationSeconds || null,
+            nextRoundAt: roundParsed.roundEndsAt || null,
+            zeroRoundEndsAt: roundParsed.zeroRoundEndsAt || null
           }
         : {
             index: 0,
@@ -150,14 +187,28 @@ export class LobbyRepository {
 
       const status = gameStatus !== null ? gameStatusToLabel(gameStatus) : "waiting";
 
-      const playerResources = viewerAddress
-        ? await publicClient.readContract({
-            address: gameCoreAddress,
-            abi: gameCoreAbi,
-            functionName: "getPlayerResources",
-            args: [BigInt(lobbyId), viewerAddress]
-          } as any).catch(() => null)
-        : null;
+      const [playerResources, viewerCraftedGoods] = await Promise.all([
+        viewerAddress
+          ? publicClient
+              .readContract({
+                address: gameCoreAddress,
+                abi: gameCoreAbi,
+                functionName: "getPlayerResources",
+                args: [BigInt(lobbyId), viewerAddress]
+              } as any)
+              .catch(() => null)
+          : Promise.resolve(null),
+        viewerAddress
+          ? publicClient
+              .readContract({
+                address: gameCoreAddress,
+                abi: gameCoreAbi,
+                functionName: "getPlayerCraftedGoods",
+                args: [BigInt(lobbyId), viewerAddress]
+              } as any)
+              .catch(() => 0n)
+          : Promise.resolve(0n)
+      ]);
       const [buildCostRaw, upgradeCostRaw, discoverCostRaw] = await Promise.all([
         publicClient.readContract({
           address: gameCoreAddress,
@@ -179,53 +230,48 @@ export class LobbyRepository {
           : null
       ]);
 
-      const actionCosts: ActionCosts | null = buildCostRaw && upgradeCostRaw && discoverCostRaw
-        ? {
-            build: {
-              food: Number((buildCostRaw as any)[0]),
-              wood: Number((buildCostRaw as any)[1]),
-              stone: Number((buildCostRaw as any)[2]),
-              ore: Number((buildCostRaw as any)[3]),
-              energy: Number((buildCostRaw as any)[4])
-            },
-            upgrade: {
-              food: Number((upgradeCostRaw as any)[0]),
-              wood: Number((upgradeCostRaw as any)[1]),
-              stone: Number((upgradeCostRaw as any)[2]),
-              ore: Number((upgradeCostRaw as any)[3]),
-              energy: Number((upgradeCostRaw as any)[4])
-            },
-            discover: {
-              food: Number((discoverCostRaw as any)[0]),
-              wood: Number((discoverCostRaw as any)[1]),
-              stone: Number((discoverCostRaw as any)[2]),
-              ore: Number((discoverCostRaw as any)[3]),
-              energy: Number((discoverCostRaw as any)[4])
+      const emptyCost = () => ({ food: 0, wood: 0, stone: 0, ore: 0, energy: 0 });
+      const actionCosts: ActionCosts | null =
+        buildCostRaw && upgradeCostRaw
+          ? {
+              build: normalizeContractResources(buildCostRaw),
+              upgrade: normalizeContractResources(upgradeCostRaw),
+              discover: discoverCostRaw ? normalizeContractResources(discoverCostRaw) : emptyCost()
             }
-          }
-        : null;
+          : null;
 
-      const players = playerAddressList.map((playerAddress) => {
+      const craftedNum = Number(viewerCraftedGoods) || 0;
+      const aliveFlags: boolean[] =
+        playerAddressList.length > 0
+          ? await Promise.all(
+              playerAddressList.map((playerAddress) =>
+                publicClient
+                  .readContract({
+                    address: gameCoreAddress,
+                    abi: gameCoreAbi,
+                    functionName: "isPlayerAlive",
+                    args: [BigInt(lobbyId), playerAddress]
+                  } as any)
+                  .then((x: unknown) => Boolean(x))
+                  .catch(() => true)
+              )
+            )
+          : [];
+      const players = playerAddressList.map((playerAddress, index) => {
         const isViewer = viewerAddress?.toLowerCase() === playerAddress.toLowerCase();
         return buildPlayerState(
           playerAddress,
-          isViewer && playerResources
-            ? {
-                food: Number((playerResources as any)[0]),
-                wood: Number((playerResources as any)[1]),
-                stone: Number((playerResources as any)[2]),
-                ore: Number((playerResources as any)[3]),
-                energy: Number((playerResources as any)[4])
-              }
-            : emptyResources()
+          isViewer && playerResources ? normalizeContractResources(playerResources) : emptyResources(),
+          isViewer ? craftedNum : 0,
+          aliveFlags[index] !== false
         );
       });
 
       let mapConfigState: { seed: string; radius: number } | null = null;
       const mapHexes: HexTile[] = [];
-      if (mapConfig) {
-        const seed = BigInt((mapConfig as any)[0]);
-        const radius = Number((mapConfig as any)[1]);
+      const mapParsed = readMapConfigTuple(mapConfig);
+      if (mapParsed) {
+        const { seed, radius } = mapParsed;
         mapConfigState = { seed: seed.toString(), radius };
         const localLayout = generateLocalMap(seed, radius);
         const tileContracts = localLayout.map((tile) => ({
@@ -277,17 +323,21 @@ export class LobbyRepository {
 
         localLayout.forEach((tile, index) => {
           const tileState = tileStates[index] as any;
+          const parsed = parseHexTileContractResult(tileState);
           const override = localHexOverrides?.get(`${lobbyId}:${tile.id}`);
-          const owner = override?.owner ?? normalizeOwner(tileState?.[3] ?? tile.owner);
-          const discoveredBy = override?.discoveredBy ?? (tileState?.[4] || owner ? [owner ?? viewerAddress ?? ""] : []);
-          const structureExists = override?.structure !== undefined ? override.structure !== null : Boolean(tileState?.[5]);
+          const owner = override?.owner ?? normalizeOwner(parsed?.owner ?? tile.owner);
+          const discoveredBy =
+            override?.discoveredBy ??
+            (parsed?.discovered || owner ? [owner ?? viewerAddress ?? ""] : []);
+          const structureExists =
+            override?.structure !== undefined ? override.structure !== null : Boolean(parsed?.structureExists);
           const structure = override?.structure !== undefined
             ? override.structure
-            : structureExists
+            : structureExists && parsed
               ? {
-                  level: Number(tileState?.[6]) as 1 | 2,
-                  collectedAtRound: Number(tileState?.[8]) === 0 ? null : Number(tileState?.[8]),
-                  builtAtRound: Number(tileState?.[7])
+                  level: Number(parsed.structureLevel) as 1 | 2,
+                  collectedAtRound: parsed.collectedAtRound === 0 ? null : parsed.collectedAtRound,
+                  builtAtRound: parsed.builtAtRound
                 }
               : null;
 
@@ -302,6 +352,60 @@ export class LobbyRepository {
 
       const me = players.find((player) => viewerAddress && player.address.toLowerCase() === viewerAddress.toLowerCase()) ?? null;
 
+      let globalVotes: Array<{
+        id: string;
+        title: string;
+        effectKey: string;
+        yesVotes: number;
+        noVotes: number;
+        resolved: boolean;
+        passed: boolean;
+        closesAtRound: number;
+      }> = [];
+      try {
+        const pCount = Number(
+          await publicClient.readContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "getProposalCount",
+            args: [BigInt(lobbyId)]
+          } as any)
+        );
+        const maxP = Math.min(Number.isFinite(pCount) ? pCount : 0, 16);
+        for (let i = 0; i < maxP; i++) {
+          const pr = await publicClient
+            .readContract({
+              address: gameCoreAddress,
+              abi: gameCoreAbi,
+              functionName: "getProposal",
+              args: [BigInt(lobbyId), BigInt(i)]
+            } as any)
+            .catch(() => null);
+          if (!pr) continue;
+          const [title, effectKey, yesVotes, noVotes, resolved, passed, closeRound] = pr as [
+            string,
+            string,
+            bigint,
+            bigint,
+            boolean,
+            boolean,
+            bigint
+          ];
+          globalVotes.push({
+            id: String(i),
+            title,
+            effectKey,
+            yesVotes: Number(yesVotes),
+            noVotes: Number(noVotes),
+            resolved: Boolean(resolved),
+            passed: Boolean(passed),
+            closesAtRound: Number(closeRound)
+          });
+        }
+      } catch {
+        globalVotes = [];
+      }
+
       return {
         lobby: {
           id: lobbyId,
@@ -309,12 +413,11 @@ export class LobbyRepository {
           host,
           status,
           rounds,
-          pollution: 0,
           players,
           me,
           mapHexes,
           activeEffects: [],
-          globalVotes: [],
+          globalVotes,
           barterOffers: [],
           logs: [],
           pendingEarthquake: null,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
-import { ArrowRightLeft, CheckCircle2, Hammer, Leaf, Sparkles, Vote } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, Factory, Flag, Hammer, Leaf, Sparkles, Vote } from "lucide-react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useAccount, useConnect, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
 import { createPublicClient, encodeFunctionData, formatEther, http, parseEther } from "viem";
@@ -79,10 +79,10 @@ const VOTE_PRESETS = [
     effect: { multipliers: { energy: 1.2 } }
   },
   {
-    id: "cleanup",
-    label: "Pollution cleanup",
-    title: "Pollution cleanup",
-    effect: { multipliers: { food: 1.1, wood: 1.1, stone: 1.1, ore: 1.1 } }
+    id: "alloyRush",
+    label: "Alloy rush",
+    title: "Alloy rush",
+    effect: { multipliers: { ore: 1.15, energy: 1.15 } }
   }
 ] as const;
 
@@ -90,6 +90,7 @@ function AppPage() {
   const navigate = useNavigate();
   const { lobbyId } = useParams<{ lobbyId: string }>();
   const [lobbies, setLobbies] = useState<LobbySummary[]>([]);
+  const [chainDeployHint, setChainDeployHint] = useState<string | null>(null);
   const [activeLobby, setActiveLobby] = useState<LobbyState | null>(null);
   const [activeMapConfig, setActiveMapConfig] = useState<{ seed: string; radius: number } | null>(null);
   const [activeActionCosts, setActiveActionCosts] = useState<ActionCosts | null>(null);
@@ -97,6 +98,7 @@ function AppPage() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
   const [isCreatingLobby, setIsCreatingLobby] = useState(false);
+  const [startingLobby, setStartingLobby] = useState(false);
   const [nowSec, setNowSec] = useState(Math.floor(Date.now() / 1000));
 
   const [tradeOfferDraft, setTradeOfferDraft] = useState<Record<ResourceKey, number>>({
@@ -113,8 +115,14 @@ function AppPage() {
     ore: 0,
     energy: 0
   });
+  const [bankSellKind, setBankSellKind] = useState(0);
+  const [bankBuyKind, setBankBuyKind] = useState(1);
+  const [craftCostHint, setCraftCostHint] = useState<string | null>(null);
+  const [victoryAlloyTarget, setVictoryAlloyTarget] = useState<number | null>(null);
   const lobbySnapshotRef = useRef<LobbyState | null>(null);
-  const localHexOverridesRef = useRef(new Map<string, { owner: string; discoveredBy: string[]; structure: LobbyState["mapHexes"][number]["structure"] }>());
+  const localHexOverridesRef = useRef(
+    new Map<string, { owner: string; discoveredBy: string[]; structure?: LobbyState["mapHexes"][number]["structure"] }>()
+  );
   const mapLayoutCache = useRef(new Map<string, HexTile[]>());
 
   const { address, isConnected } = useAccount();
@@ -135,6 +143,61 @@ function AppPage() {
   const lobbyManagerAbi = contracts?.contracts?.LobbyManager?.abi;
   const gameCoreAddress = contracts?.contracts?.GameCore?.address as `0x${string}` | undefined;
   const gameCoreAbi = contracts?.contracts?.GameCore?.abi;
+
+  useEffect(() => {
+    if (!publicClient || !gameCoreAddress || !gameCoreAbi) {
+      setCraftCostHint(null);
+      setVictoryAlloyTarget(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [costRaw, threshold] = await Promise.all([
+          publicClient
+            .readContract({
+              address: gameCoreAddress,
+              abi: gameCoreAbi,
+              functionName: "previewCraftAlloyCost",
+              args: []
+            } as any)
+            .catch(() => null),
+          publicClient
+            .readContract({
+              address: gameCoreAddress,
+              abi: gameCoreAbi,
+              functionName: "getVictoryGoodsThreshold",
+              args: []
+            } as any)
+            .catch(() => null)
+        ]);
+        if (cancelled) return;
+        if (costRaw && Array.isArray(costRaw) && costRaw.length >= 5) {
+          const [food, wood, stone, ore, energy] = costRaw as bigint[];
+          setCraftCostHint(
+            formatCost({
+              food: Number(food),
+              wood: Number(wood),
+              stone: Number(stone),
+              ore: Number(ore),
+              energy: Number(energy)
+            })
+          );
+        } else {
+          setCraftCostHint(null);
+        }
+        setVictoryAlloyTarget(threshold != null ? Number(threshold as bigint) : null);
+      } catch {
+        if (!cancelled) {
+          setCraftCostHint(null);
+          setVictoryAlloyTarget(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicClient, gameCoreAddress, gameCoreAbi, activeLobby?.id]);
 
   const lobbyRepository = useMemo(
     () =>
@@ -399,16 +462,36 @@ function AppPage() {
   };
 
   const syncLobbiesFromChain = async () => {
-    const nextLobbies = await lobbyRepository.loadSummaries();
-    setLobbies(nextLobbies);
-    return nextLobbies;
+    const result = await lobbyRepository.loadSummaries();
+    setLobbies(result.lobbies);
+    if (result.lobbyManagerMissing) {
+      setChainDeployHint(
+        "No LobbyManager bytecode at the address in src/abi/localhost.json on this RPC (common: fresh Anvil vs. stale deployment file). Use the same URL as VITE_RPC_URL, then run: cd contracts && npm run deploy:local"
+      );
+    } else if (result.readFailed) {
+      setChainDeployHint(
+        "getLobbyCount failed — ABI may not match this chain. Run: cd contracts && npm run deploy:local"
+      );
+    } else {
+      setChainDeployHint(null);
+    }
+    return result.lobbies;
   };
 
   const syncActiveLobbyFromChain = async (lobbyId: string) => {
     const hydrated = await lobbyRepository.loadLobbyState(lobbyId);
 
-    if (!hydrated) return null;
+    if (!hydrated) {
+      const deployed = await lobbyRepository.isLobbyManagerDeployed();
+      if (!deployed) {
+        setChainDeployHint(
+          "Contracts are not deployed at the addresses in abi/localhost.json on this RPC. From repo root: cd contracts && npm run deploy:local"
+        );
+      }
+      return null;
+    }
 
+    setChainDeployHint(null);
     setActiveMapConfig(hydrated.mapConfig);
     setActiveActionCosts(hydrated.actionCosts);
     setActiveLobby(hydrated.lobby);
@@ -515,7 +598,7 @@ function AppPage() {
     };
 
     sync();
-    const interval = setInterval(sync, 3000);
+    const interval = setInterval(sync, 2000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -708,6 +791,7 @@ function AppPage() {
   const onStartLobby = async () => {
     if (!address || !lobbyManagerAddress || !lobbyManagerAbi || !gameCoreAddress || !gameCoreAbi || !activeLobby) return;
     setError("");
+    setStartingLobby(true);
     try {
       if (!publicClient) {
         throw new Error("RPC client unavailable");
@@ -737,13 +821,23 @@ function AppPage() {
         throw new Error("GameCore.startGame transaction reverted");
       }
 
-      const loaded = await syncActiveLobbyFromChain(activeLobby.id);
-      if (!loaded) {
-        throw new Error("Unable to refresh lobby from chain after start");
+      const id = activeLobby.id;
+      let loaded: LobbyState | null = null;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        loaded = await syncActiveLobbyFromChain(id);
+        if (loaded && loaded.status !== "waiting") {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (!loaded || loaded.status === "waiting") {
+        throw new Error("Game did not appear on-chain yet — try refresh in a moment");
       }
       await syncLobbiesFromChain();
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setStartingLobby(false);
     }
   };
 
@@ -780,22 +874,14 @@ function AppPage() {
         lobbySnapshotRef.current = activeLobby;
         localHexOverridesRef.current.set(`${activeLobby.id}:${hex.id}`, {
           owner: address,
-          discoveredBy: [address],
-          structure: hex.structure
+          discoveredBy: [address]
         });
         setActiveLobby((current) => {
           if (!current) return current;
-          const nextStatus = current.players.length <= 1 ? "running" : current.status;
           return {
             ...current,
-            status: nextStatus,
-            rounds: current.players.length <= 1
-              ? { ...current.rounds, index: Math.max(1, current.rounds.index), startedAt: Math.floor(Date.now() / 1000) }
-              : current.rounds,
             mapHexes: current.mapHexes.map((tile) =>
-              tile.id === hex.id
-                ? { ...tile, owner: address, discovered: true }
-                : tile
+              tile.id === hex.id ? { ...tile, owner: address, discoveredBy: [address] } : tile
             )
           };
         });
@@ -853,6 +939,24 @@ function AppPage() {
           args: [lobbyId, payload.hexId ?? selectedForDetails?.id, BigInt(payload.amount || 10)]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+      } else if (event === "game:craft") {
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
+          functionName: "craftAlloy",
+          args: [lobbyId]
+        });
+        await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+      } else if (event === "game:concede") {
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
+          functionName: "concede",
+          args: [lobbyId]
+        });
+        await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "barter:create") {
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
@@ -872,15 +976,33 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:create") {
-        const effectKey = payload.effect?.special === "__END_ROUND__"
-          ? "__END_ROUND__"
-          : JSON.stringify(payload.effect || {});
+        const effectKey =
+          payload.effect?.special === "__END_ROUND__"
+            ? "__END_ROUND__"
+            : payload.effect?.special === "__END_GAME__"
+              ? "__END_GAME__"
+              : JSON.stringify(payload.effect || {});
+        const closeRound =
+          effectKey === "__END_GAME__" && activeLobby.status === "zero-round"
+            ? 0
+            : effectKey === "__END_ROUND__"
+              ? 999
+              : activeLobby.rounds.index + 3;
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
           functionName: "createProposal",
-          args: [lobbyId, payload.title, effectKey, BigInt(activeLobby.rounds.index + 3)]
+          args: [lobbyId, payload.title, effectKey, BigInt(closeRound)]
+        });
+        await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+      } else if (event === "game:bank-trade") {
+        const txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
+          functionName: "tradeWithBank",
+          args: [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind)]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:cast") {
@@ -971,6 +1093,10 @@ function AppPage() {
       <div className="connect-screen">
         <h1>Loading game...</h1>
         <p>Reading lobby state from blockchain.</p>
+        {chainDeployHint ? <p className="error-banner">{chainDeployHint}</p> : null}
+        <button type="button" onClick={() => navigate("/")}>
+          Back to lobbies
+        </button>
       </div>
     );
   }
@@ -984,7 +1110,20 @@ function AppPage() {
         onCreate={onCreateLobby}
         onOpen={onOpenLobby}
         onDisconnect={() => disconnect()}
+        deployHint={chainDeployHint}
       />
+    );
+  }
+
+  if (activeLobby.status === "ended") {
+    return (
+      <div className="connect-screen">
+        <h1>Game ended</h1>
+        <p>The table voted to end this match (or it was resolved on-chain). Rounds no longer advance.</p>
+        <button type="button" onClick={() => navigate("/")}>
+          Back to lobbies
+        </button>
+      </div>
     );
   }
 
@@ -996,6 +1135,7 @@ function AppPage() {
         isHost={isLobbyHost}
         hasTicket={hasLobbyTicket}
         canStart={canStartLobby}
+        starting={startingLobby}
         onBuyTicket={onBuyTicket}
         onStart={onStartLobby}
         onCancel={onCancelLobby}
@@ -1007,7 +1147,7 @@ function AppPage() {
 
   return (
     <div className="game-shell">
-      <ResourcePanel me={activeLobby.me} pollution={activeLobby.pollution} round={activeLobby.rounds.index} effects={activeLobby.activeEffects} />
+      <ResourcePanel me={activeLobby.me} round={activeLobby.rounds.index} effects={activeLobby.activeEffects} />
 
       <main className="map-main">
         <div className="top-hud">
@@ -1029,17 +1169,7 @@ function AppPage() {
           earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
           onHexClick={(id) => {
             if (pendingAction) return;
-            if (activeLobby.status === "zero-round") {
-              const alreadyPicked = activeLobby.mapHexes.some((tile) => tile.owner?.toLowerCase() === address?.toLowerCase());
-              if (alreadyPicked) {
-                setSelectedHex(id);
-                return;
-              }
-            }
             setSelectedHex(id);
-            if (activeLobby.status === "zero-round" && myTurnInZeroRound) {
-              action("game:pick-start", { hexId: id }, true);
-            }
           }}
         />
 
@@ -1058,17 +1188,63 @@ function AppPage() {
           </div>
         ) : null}
 
+        {activeLobby.status === "zero-round" && myTurnInZeroRound ? (
+          <div className="action-group">
+            <h4>Round 0 — start</h4>
+            <p className="selected-text">
+              Click a free hex on the map, then confirm here. The pick is sent only after you press the button.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                if (!selectedHex) return;
+                action("game:pick-start", { hexId: selectedHex }, true);
+              }}
+              disabled={
+                Boolean(pendingAction) ||
+                !selectedHex ||
+                Boolean(activeLobby.mapHexes.find((h) => h.id === selectedHex)?.owner)
+              }
+            >
+              Confirm starting hex {selectedHex ? `(${selectedHex})` : ""}
+            </button>
+          </div>
+        ) : null}
+
+        {activeLobby.status === "zero-round" && !myTurnInZeroRound ? (
+          <div className="action-group">
+            <h4>Round 0</h4>
+            <p className="selected-text">You already chose a starting hex. Waiting for other players…</p>
+          </div>
+        ) : null}
+
         <div className="action-group">
           <h4>Players</h4>
           {activeLobby.players.map((player) => (
             <div key={player.address} className="player-row">
               <div>
                 <strong>{player.nickname}</strong>
-                <p>{short(player.address)} {player.address.toLowerCase() === activeLobby.host.toLowerCase() ? "• host" : ""}</p>
+                <p>
+                  {short(player.address)} {player.address.toLowerCase() === activeLobby.host.toLowerCase() ? "• host" : ""}{" "}
+                  {player.alive === false ? "• out" : ""}
+                </p>
               </div>
-              <span className="player-tag">member</span>
+              <span className="player-tag">{player.alive === false ? "eliminated" : "active"}</span>
             </div>
           ))}
+          {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
+            <button
+              type="button"
+              className="danger"
+              onClick={() => {
+                if (!window.confirm("Concede this match? Others may win if you are not the last player standing.")) return;
+                void action("game:concede", {});
+              }}
+              disabled={Boolean(pendingAction)}
+            >
+              <Flag size={16} /> Concede match
+            </button>
+          ) : null}
         </div>
 
         <div className="action-group">
@@ -1102,6 +1278,70 @@ function AppPage() {
             </button>
           )}
           {!selectedForDetails && <p className="selected-text">Select a hex to see actions.</p>}
+        </div>
+
+        <div className="action-group">
+          <h4>Bank</h4>
+          <p className="selected-text">
+            Trade with the neutral bank: pay <strong>4</strong> of one basic resource (food, wood, stone, ore) for{" "}
+            <strong>1</strong> of another — no player counterparty required.
+          </p>
+          <div className="trade-line">
+            <label htmlFor="bank-sell">Pay</label>
+            <select
+              id="bank-sell"
+              value={bankSellKind}
+              onChange={(e) => setBankSellKind(Number(e.target.value))}
+              disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+            >
+              <option value={0}>food ×4</option>
+              <option value={1}>wood ×4</option>
+              <option value={2}>stone ×4</option>
+              <option value={3}>ore ×4</option>
+            </select>
+          </div>
+          <div className="trade-line">
+            <label htmlFor="bank-buy">Receive</label>
+            <select
+              id="bank-buy"
+              value={bankBuyKind}
+              onChange={(e) => setBankBuyKind(Number(e.target.value))}
+              disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+            >
+              <option value={0}>food ×1</option>
+              <option value={1}>wood ×1</option>
+              <option value={2}>stone ×1</option>
+              <option value={3}>ore ×1</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind })}
+            disabled={activeLobby.status !== "running" || bankSellKind === bankBuyKind || Boolean(pendingAction)}
+          >
+            Execute bank trade
+          </button>
+        </div>
+
+        <div className="action-group">
+          <h4>Crafting</h4>
+          <p className="selected-text">
+            Smelt <strong>alloy</strong> from basics — costs scale with how much you already forged.
+            {victoryAlloyTarget != null && (
+              <>
+                {" "}
+                First to <strong>{victoryAlloyTarget}</strong> alloy wins.
+              </>
+            )}
+          </p>
+          <p className="selected-text">{craftCostHint ? `Next craft cost: ${craftCostHint}` : "Loading craft preview…"}</p>
+          <button
+            type="button"
+            onClick={() => action("game:craft", {})}
+            disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+          >
+            <Factory size={16} /> Craft alloy
+          </button>
         </div>
 
         <div className="action-group">
@@ -1169,6 +1409,22 @@ function AppPage() {
 
         <div className="action-group">
           <h4>Votes</h4>
+          <p className="selected-text">
+            Stuck in round 0? Propose <strong>end game</strong> — if everyone votes yes, the lobby ends. While running, the
+            same vote closes after the deadline or when all players have cast.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              action("vote:create", {
+                title: "End game",
+                effect: { special: "__END_GAME__" }
+              })
+            }
+            disabled={Boolean(pendingAction) || (activeLobby.status !== "zero-round" && activeLobby.status !== "running")}
+          >
+            Propose end game
+          </button>
           <div className="vote-preset-grid">
             {VOTE_PRESETS.map((preset) => (
               <button
@@ -1191,13 +1447,38 @@ function AppPage() {
             ))}
           </div>
 
-          {activeLobby.globalVotes.slice(0, 3).map((vote: any) => (
+          {activeLobby.globalVotes
+            .filter((vote: { resolved?: boolean }) => !vote.resolved)
+            .slice(0, 8)
+            .map((vote: any) => (
             <div key={vote.id} className="vote-item">
               <p>{vote.title}</p>
+              <p className="selected-text">
+                {vote.effectKey === "__END_ROUND__"
+                  ? "End current round (unanimous yes, no “no” votes)"
+                  : vote.effectKey === "__END_GAME__"
+                    ? "End the match"
+                    : vote.effectKey}
+              </p>
               <p className="selected-text">Closes after round {vote.closesAtRound}</p>
+              <p className="selected-text">
+                Votes: yes {vote.yesVotes} / no {vote.noVotes}
+              </p>
               <div className="vote-buttons">
-                <button onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}>Yes</button>
-                <button onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}>No</button>
+                <button
+                  type="button"
+                  onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}
+                  disabled={Boolean(pendingAction)}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}
+                  disabled={Boolean(pendingAction)}
+                >
+                  No
+                </button>
               </div>
             </div>
           ))}

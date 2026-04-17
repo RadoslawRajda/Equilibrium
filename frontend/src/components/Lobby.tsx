@@ -18,9 +18,10 @@ type Props = {
   onCreate: (radius: number) => void;
   onOpen: (lobbyId: string) => void;
   onDisconnect: () => void;
+  deployHint?: string | null;
 };
 
-export function Lobby({ address, lobbies, creating, onCreate, onOpen, onDisconnect }: Props) {
+export function Lobby({ address, lobbies, creating, onCreate, onOpen, onDisconnect, deployHint }: Props) {
   const [radius, setRadius] = useState(4);
 
   return (
@@ -35,6 +36,8 @@ export function Lobby({ address, lobbies, creating, onCreate, onOpen, onDisconne
         <span>{address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "No wallet connected"}</span>
         <button onClick={onDisconnect}>Disconnect</button>
       </div>
+
+      {deployHint ? <p className="error-banner">{deployHint}</p> : null}
 
       <section className="lobby-actions">
         <label className="lobby-radius-picker">

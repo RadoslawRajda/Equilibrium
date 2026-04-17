@@ -10,6 +10,7 @@ import {
   isAdjacent,
   isAdjacentToOwnedHex,
   managerStatusToLabel,
+  normalizeContractResources,
   normalizeOwner,
   short
 } from "./gameUtils";
@@ -22,12 +23,34 @@ describe("gameUtils", () => {
 
   it("formats resource costs", () => {
     expect(formatCost({ food: 10, wood: 20, stone: 30, ore: 40 })).toBe("food 10 / wood 20 / stone 30 / ore 40");
+    expect(formatCost({ food: 0, wood: 0, stone: 0, ore: 0, energy: 5 })).toBe("energy 5");
+    expect(formatCost({ food: 0, wood: 0, stone: 0, ore: 0, energy: 0 })).toBe("free");
+  });
+
+  it("normalizes viem-style resource structs", () => {
+    expect(
+      normalizeContractResources({
+        food: 10n,
+        wood: 20n,
+        stone: 30n,
+        ore: 40n,
+        energy: 50n
+      })
+    ).toEqual({ food: 10, wood: 20, stone: 30, ore: 40, energy: 50 });
+    expect(normalizeContractResources([1n, 2n, 3n, 4n, 5n])).toEqual({
+      food: 1,
+      wood: 2,
+      stone: 3,
+      ore: 4,
+      energy: 5
+    });
   });
 
   it("maps statuses to labels", () => {
     expect(managerStatusToLabel(0)).toBe("open");
     expect(managerStatusToLabel(2)).toBe("completed");
     expect(gameStatusToLabel(1)).toBe("zero-round");
+    expect(gameStatusToLabel(3)).toBe("ended");
     expect(gameStatusToLabel(99)).toBe("waiting");
   });
 
@@ -54,5 +77,7 @@ describe("gameUtils", () => {
     const player = buildPlayerState("0x1234567890abcdef1234567890abcdef12345678");
     expect(player.nickname).toBe("0x1234...5678");
     expect(player.resources).toEqual(emptyResources());
+    expect(player.craftedGoods).toBe(0);
+    expect(player.alive).toBe(true);
   });
 });

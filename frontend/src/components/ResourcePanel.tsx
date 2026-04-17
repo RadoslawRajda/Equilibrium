@@ -1,10 +1,9 @@
 import { motion } from "framer-motion";
-import { BatteryCharging, Pickaxe, TreePine, UtensilsCrossed, Wheat } from "lucide-react";
+import { BatteryCharging, Factory, Pickaxe, TreePine, UtensilsCrossed, Wheat } from "lucide-react";
 import type { PlayerState } from "../types";
 
 type Props = {
   me: PlayerState | null;
-  pollution: number;
   round: number;
   effects: Array<{ id: string; label: string; remainingRounds: number }>;
 };
@@ -19,7 +18,7 @@ const Item = ({ icon: Icon, label, value, accent }: { icon: any; label: string; 
   </motion.div>
 );
 
-export function ResourcePanel({ me, pollution, round, effects }: Props) {
+export function ResourcePanel({ me, round, effects }: Props) {
   return (
     <aside className="panel left-panel">
       <h2>Your Resources</h2>
@@ -29,11 +28,11 @@ export function ResourcePanel({ me, pollution, round, effects }: Props) {
         <Item icon={Pickaxe} label="Stone" value={me?.resources.stone ?? 0} accent="#96b7ff" />
         <Item icon={UtensilsCrossed} label="Ore" value={me?.resources.ore ?? 0} accent="#ff9f6e" />
         <Item icon={BatteryCharging} label="Energy" value={me?.resources.energy ?? 0} accent="#56f0ff" />
+        <Item icon={Factory} label="Alloy" value={me?.craftedGoods ?? 0} accent="#e0b0ff" />
       </div>
 
       <div className="status-card">
         <p>Round: <strong>{round}</strong></p>
-        <p>Pollution: <strong>{pollution}%</strong></p>
       </div>
 
       <div className="effects-list">

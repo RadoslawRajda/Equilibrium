@@ -38,6 +38,7 @@ contract GameCore is ActorAware {
         uint256 bankruptRounds;
         uint256 ownedHexCount;
         Resources resources;
+        uint256 craftedGoods;
     }
 
     struct Structure {
@@ -96,6 +97,10 @@ contract GameCore is ActorAware {
         mapping(bytes32 => bool) hexExists;
         TradeOffer[] trades;
         Proposal[] proposals;
+        /// @dev keccak256(abi.encodePacked(proposalId, voter)) -> has voted
+        mapping(bytes32 => bool) proposalVoteCast;
+        /// @dev ERC-8004 adapter or trusted bot; host-assigned. Applies bounded grants/takes via `gameMasterAdjustResources`.
+        address gameMasterExecutor;
     }
 
     mapping(uint256 => Lobby) private lobbies;
@@ -115,6 +120,21 @@ contract GameCore is ActorAware {
     event ProposalCreated(uint256 indexed lobbyId, uint256 indexed proposalId, string title, string effectKey);
     event ProposalVoted(uint256 indexed lobbyId, uint256 indexed proposalId, address indexed voter, bool support);
     event ProposalResolved(uint256 indexed lobbyId, uint256 indexed proposalId, bool passed);
+    event BankTrade(
+        uint256 indexed lobbyId,
+        address indexed player,
+        uint8 sellKind,
+        uint8 buyKind,
+        uint256 sellAmount,
+        uint256 buyAmount
+    );
+    event GameEnded(uint256 indexed lobbyId, uint256 indexed proposalId);
+    event GameMasterAdjusted(uint256 indexed lobbyId, address indexed player, string narrative);
+    event LobbyGameMasterSet(uint256 indexed lobbyId, address indexed executor);
+    event Victory(uint256 indexed lobbyId, address indexed winner);
+    event GoodsCrafted(uint256 indexed lobbyId, address indexed player, uint256 newTotal);
+    event PlayerConceded(uint256 indexed lobbyId, address indexed player);
+    event GameAbandoned(uint256 indexed lobbyId);
 
     constructor() {}
 
@@ -200,9 +220,13 @@ contract GameCore is ActorAware {
         for (uint256 i = 0; i < lobby.proposals.length; i++) {
             Proposal storage proposal = lobby.proposals[i];
             if (!proposal.resolved && lobby.roundIndex >= proposal.closeRound) {
+                if (lobby.status == Status.ZeroRound && keccak256(bytes(proposal.effectKey)) == keccak256(bytes("__END_GAME__"))) {
+                    continue;
+                }
                 proposal.resolved = true;
                 proposal.passed = proposal.yesVotes > proposal.noVotes;
                 emit ProposalResolved(lobbyId, i, proposal.passed);
+                _applyEndGameIfPassed(lobby, lobbyId, i, proposal);
             }
         }
     }
@@ -210,14 +234,9 @@ contract GameCore is ActorAware {
     function _syncRoundFromTimestamp(uint256 lobbyId) internal {
         Lobby storage lobby = lobbies[lobbyId];
 
-        if (lobby.status == Status.ZeroRound && block.timestamp >= lobby.zeroRoundEndsAt) {
-            lobby.status = Status.Running;
-            lobby.roundIndex = 1;
-            lobby.roundStartedAt = lobby.zeroRoundEndsAt;
-            lobby.roundEndsAt = lobby.roundStartedAt + lobby.roundDurationSeconds;
-            _resolveMaturedProposals(lobbyId);
-            emit RoundAdvanced(lobbyId, lobby.roundIndex, lobby.roundEndsAt);
-        }
+        // Zero round does not auto-advance on the deadline timer. Round 1 starts only when
+        // every player has picked (see pickStartingHex -> _advanceRound). Otherwise a slow
+        // picker can land in "running" with no hex and no starting-resource sync.
 
         if (lobby.status != Status.Running || lobby.roundDurationSeconds == 0) {
             return;
@@ -284,7 +303,105 @@ contract GameCore is ActorAware {
     }
 
     function _createPlayerState() internal pure returns (Player memory) {
-        return Player({exists: true, hasTicket: true, alive: true, bankruptRounds: 0, ownedHexCount: 0, resources: _startingResources()});
+        return Player({
+            exists: true,
+            hasTicket: true,
+            alive: true,
+            bankruptRounds: 0,
+            ownedHexCount: 0,
+            resources: _startingResources(),
+            craftedGoods: 0
+        });
+    }
+
+    function _voteKey(uint256 proposalId, address voter) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(proposalId, voter));
+    }
+
+    function _requireNotEnded(Lobby storage lobby) internal view {
+        require(lobby.status != Status.Ended, "Game ended");
+    }
+
+    function _subtractResources(Resources storage balance, Resources memory cost) internal {
+        require(balance.food >= cost.food && balance.wood >= cost.wood && balance.stone >= cost.stone && balance.ore >= cost.ore && balance.energy >= cost.energy, "Insufficient resources");
+        balance.food -= cost.food;
+        balance.wood -= cost.wood;
+        balance.stone -= cost.stone;
+        balance.ore -= cost.ore;
+        balance.energy -= cost.energy;
+    }
+
+    function _addResources(Resources storage balance, Resources memory gain) internal {
+        balance.food += gain.food;
+        balance.wood += gain.wood;
+        balance.stone += gain.stone;
+        balance.ore += gain.ore;
+        balance.energy += gain.energy;
+    }
+
+    function _subtractKind(Resources storage balance, uint8 kind, uint256 amount) internal {
+        if (kind == 0) {
+            require(balance.food >= amount, "Insufficient food");
+            balance.food -= amount;
+        } else if (kind == 1) {
+            require(balance.wood >= amount, "Insufficient wood");
+            balance.wood -= amount;
+        } else if (kind == 2) {
+            require(balance.stone >= amount, "Insufficient stone");
+            balance.stone -= amount;
+        } else if (kind == 3) {
+            require(balance.ore >= amount, "Insufficient ore");
+            balance.ore -= amount;
+        } else {
+            revert("Bad resource kind");
+        }
+    }
+
+    function _addKind(Resources storage balance, uint8 kind, uint256 amount) internal {
+        if (kind == 0) {
+            balance.food += amount;
+        } else if (kind == 1) {
+            balance.wood += amount;
+        } else if (kind == 2) {
+            balance.stone += amount;
+        } else if (kind == 3) {
+            balance.ore += amount;
+        } else {
+            revert("Bad resource kind");
+        }
+    }
+
+    function _applyEndGameIfPassed(Lobby storage lobby, uint256 lobbyId, uint256 proposalId, Proposal storage proposal) internal {
+        if (!proposal.passed) {
+            return;
+        }
+        if (keccak256(bytes(proposal.effectKey)) != keccak256(bytes("__END_GAME__"))) {
+            return;
+        }
+        lobby.status = Status.Ended;
+        emit GameEnded(lobbyId, proposalId);
+    }
+
+    function _finalizeLastStandingOrAbandon(Lobby storage lobby, uint256 lobbyId) internal {
+        if (lobby.status != Status.Running) {
+            return;
+        }
+        uint256 aliveCount;
+        address lastAlive;
+        for (uint256 i = 0; i < lobby.players.length; i++) {
+            address a = lobby.players[i];
+            if (lobby.playerState[a].exists && lobby.playerState[a].alive) {
+                aliveCount += 1;
+                lastAlive = a;
+            }
+        }
+        if (aliveCount == 1) {
+            lobby.status = Status.Ended;
+            emit Victory(lobbyId, lastAlive);
+        } else if (aliveCount == 0) {
+            lobby.status = Status.Ended;
+            emit GameAbandoned(lobbyId);
+        }
     }
 
     function bootstrapLobby(uint256 lobbyId, address host, uint256 mapSeed, uint8 mapRadius) external {
@@ -375,6 +492,7 @@ contract GameCore is ActorAware {
     function discoverHex(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
         address playerAddress = _actor();
         require(lobby.status == Status.Running, "Game not running");
 
@@ -407,10 +525,13 @@ contract GameCore is ActorAware {
     function buildStructure(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
         address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
-        Player storage player = lobby.playerState[playerAddress];
         require(tile.owner == playerAddress, "Not owner");
+        Player storage player = lobby.playerState[playerAddress];
+        require(player.exists && player.alive, "Player not active");
         require(!tile.structure.exists, "Structure exists");
         _payBuildCost(player);
         tile.structure = Structure({owner: playerAddress, level: 1, exists: true, builtAtRound: lobby.roundIndex, collectedAtRound: 0});
@@ -420,10 +541,13 @@ contract GameCore is ActorAware {
     function upgradeStructure(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
         address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
-        Player storage player = lobby.playerState[playerAddress];
         require(tile.owner == playerAddress, "Not owner");
+        Player storage player = lobby.playerState[playerAddress];
+        require(player.exists && player.alive, "Player not active");
         require(tile.structure.exists, "No structure");
         require(tile.structure.level == 1, "Already max");
         _payUpgradeCost(player);
@@ -434,9 +558,13 @@ contract GameCore is ActorAware {
     function destroyStructure(uint256 lobbyId, string calldata hexId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
         address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
         require(tile.owner == playerAddress, "Not owner");
+        Player storage player = lobby.playerState[playerAddress];
+        require(player.exists && player.alive, "Player not active");
         require(tile.structure.exists, "No structure");
         tile.structure = Structure({owner: address(0), level: 0, exists: false, builtAtRound: 0, collectedAtRound: 0});
         emit StructureDestroyed(lobbyId, playerAddress, hexId);
@@ -445,14 +573,17 @@ contract GameCore is ActorAware {
     function collect(uint256 lobbyId, string calldata hexId, uint256 amount) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
         address playerAddress = _actor();
         HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
         require(tile.owner == playerAddress, "Not owner");
+        Player storage player = lobby.playerState[playerAddress];
+        require(player.exists && player.alive, "Player not active");
         require(tile.structure.exists, "No structure");
         require(tile.structure.builtAtRound < lobby.roundIndex, "Production starts next round");
         require(tile.structure.collectedAtRound != lobby.roundIndex, "Already collected this round");
         tile.structure.collectedAtRound = lobby.roundIndex;
-        Player storage player = lobby.playerState[playerAddress];
         uint256 energyCost = GameConfig.collectionEnergyCost(tile.structure.level);
         require(player.resources.energy >= energyCost, "Not enough energy");
         player.resources.energy -= energyCost;
@@ -467,7 +598,10 @@ contract GameCore is ActorAware {
     function createTrade(uint256 lobbyId, address taker, Resources calldata offer, Resources calldata request, uint256 expiryRounds) external returns (uint256) {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
         address playerAddress = _actor();
+        require(lobby.playerState[playerAddress].exists && lobby.playerState[playerAddress].alive, "Player not active");
         lobby.trades.push(TradeOffer({
             maker: playerAddress,
             taker: taker,
@@ -486,18 +620,58 @@ contract GameCore is ActorAware {
     function acceptTrade(uint256 lobbyId, uint256 tradeId) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
         address playerAddress = _actor();
         TradeOffer storage trade = lobby.trades[tradeId];
         require(trade.exists, "Trade missing");
         require(!trade.accepted, "Trade accepted");
         require(trade.taker == address(0) || trade.taker == playerAddress, "Not target");
+        require(lobby.roundIndex <= trade.expiresAtRound, "Trade expired");
+        address maker = trade.maker;
+        require(playerAddress != maker, "Cannot self-accept");
+        Player storage makerPlayer = lobby.playerState[maker];
+        Player storage takerPlayer = lobby.playerState[playerAddress];
+        require(takerPlayer.exists && takerPlayer.alive, "Player not active");
+        Resources memory offerAmt = trade.offer;
+        Resources memory requestAmt = trade.request;
+        _subtractResources(makerPlayer.resources, offerAmt);
+        _subtractResources(takerPlayer.resources, requestAmt);
+        _addResources(makerPlayer.resources, requestAmt);
+        _addResources(takerPlayer.resources, offerAmt);
         trade.accepted = true;
         emit TradeAccepted(lobbyId, tradeId, playerAddress);
+    }
+
+    /// @notice Swap basic resources (kinds 0–3) with the neutral bank at fixed rates from `GameConfig`.
+    function tradeWithBank(uint256 lobbyId, uint8 sellKind, uint8 buyKind) external {
+        _syncRoundFromTimestamp(lobbyId);
+        Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
+        require(sellKind < 4 && buyKind < 4 && sellKind != buyKind, "Invalid bank trade");
+        uint256 give = GameConfig.bankTradeGiveAmount();
+        uint256 recv = GameConfig.bankTradeReceiveAmount();
+        Player storage player = lobby.playerState[_actor()];
+        require(player.exists && player.alive, "Player not active");
+        _subtractKind(player.resources, sellKind, give);
+        _addKind(player.resources, buyKind, recv);
+        emit BankTrade(lobbyId, _actor(), sellKind, buyKind, give, recv);
     }
 
     function createProposal(uint256 lobbyId, string calldata title, string calldata effectKey, uint256 closeRound) external returns (uint256) {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        address actor = _actor();
+        require(lobby.playerState[actor].exists && lobby.playerState[actor].alive, "Player not active");
+        require(lobby.status == Status.Running || lobby.status == Status.ZeroRound, "No proposals");
+        if (lobby.status == Status.ZeroRound) {
+            require(keccak256(bytes(effectKey)) == keccak256(bytes("__END_GAME__")), "Zero round: end game only");
+            require(closeRound == 0, "Use closeRound 0 in zero round");
+        } else {
+            require(closeRound > lobby.roundIndex, "closeRound must be future");
+        }
         lobby.proposals.push(Proposal({
             title: title,
             effectKey: effectKey,
@@ -516,16 +690,24 @@ contract GameCore is ActorAware {
     function vote(uint256 lobbyId, uint256 proposalId, bool support) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
         address playerAddress = _actor();
+        require(lobby.playerState[playerAddress].exists && lobby.playerState[playerAddress].alive, "Eliminated");
         Proposal storage proposal = lobby.proposals[proposalId];
-        require(lobby.status == Status.Running, "Round not running");
         require(!proposal.resolved, "Resolved");
+        bytes32 ek = keccak256(bytes(proposal.effectKey));
+        bool allowZero = lobby.status == Status.ZeroRound && ek == keccak256(bytes("__END_GAME__"));
+        require(lobby.status == Status.Running || allowZero, "Cannot vote now");
+        bytes32 vk = _voteKey(proposalId, playerAddress);
+        require(!lobby.proposalVoteCast[vk], "Already voted");
+        lobby.proposalVoteCast[vk] = true;
         if (support) proposal.yesVotes += 1;
         else proposal.noVotes += 1;
         emit ProposalVoted(lobbyId, proposalId, playerAddress, support);
 
         if (
-            keccak256(bytes(proposal.effectKey)) == keccak256(bytes("__END_ROUND__")) &&
+            lobby.status == Status.Running &&
+            ek == keccak256(bytes("__END_ROUND__")) &&
             proposal.yesVotes == lobby.players.length &&
             proposal.noVotes == 0
         ) {
@@ -534,6 +716,17 @@ contract GameCore is ActorAware {
             emit ProposalResolved(lobbyId, proposalId, true);
             _advanceRound(lobbyId, GameConfig.endRoundAdvanceSeconds());
         }
+
+        if (
+            ek == keccak256(bytes("__END_GAME__")) &&
+            proposal.yesVotes == lobby.players.length &&
+            proposal.noVotes == 0
+        ) {
+            proposal.resolved = true;
+            proposal.passed = true;
+            emit ProposalResolved(lobbyId, proposalId, true);
+            _applyEndGameIfPassed(lobby, lobbyId, proposalId, proposal);
+        }
     }
 
     function resolveProposal(uint256 lobbyId, uint256 proposalId) external returns (bool passed) {
@@ -541,11 +734,102 @@ contract GameCore is ActorAware {
         Lobby storage lobby = lobbies[lobbyId];
         Proposal storage proposal = lobby.proposals[proposalId];
         require(!proposal.resolved, "Resolved");
-        require(lobby.roundIndex >= proposal.closeRound, "Voting active");
+        bool zeroEndGame = lobby.status == Status.ZeroRound && keccak256(bytes(proposal.effectKey)) == keccak256(bytes("__END_GAME__"));
+        uint256 votesCast = proposal.yesVotes + proposal.noVotes;
+        bool allVoted = votesCast >= lobby.players.length;
+        bool canResolve = lobby.roundIndex >= proposal.closeRound
+            || (zeroEndGame && (block.timestamp >= lobby.zeroRoundEndsAt || allVoted));
+        require(canResolve, "Voting active");
         proposal.resolved = true;
         proposal.passed = proposal.yesVotes > proposal.noVotes;
         emit ProposalResolved(lobbyId, proposalId, proposal.passed);
+        _applyEndGameIfPassed(lobby, lobbyId, proposalId, proposal);
         return proposal.passed;
+    }
+
+    function setLobbyGameMaster(uint256 lobbyId, address executor) external {
+        Lobby storage lobby = lobbies[lobbyId];
+        require(_actor() == lobby.host, "Only host");
+        lobby.gameMasterExecutor = executor;
+        emit LobbyGameMasterSet(lobbyId, executor);
+    }
+
+    /// @dev Called by `lobbyGameMasterExecutor` (e.g. ERC-8004 adapter). Grants/takes are bounded on mint side.
+    function gameMasterAdjustResources(
+        uint256 lobbyId,
+        address player,
+        Resources calldata grant,
+        Resources calldata take,
+        string calldata narrative
+    ) external {
+        Lobby storage lobby = lobbies[lobbyId];
+        require(msg.sender == lobby.gameMasterExecutor, "Not game master executor");
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running || lobby.status == Status.ZeroRound, "Bad status");
+        uint256 cap = GameConfig.gameMasterMaxGrantPerResource();
+        require(grant.food <= cap && grant.wood <= cap && grant.stone <= cap && grant.ore <= cap && grant.energy <= cap, "Grant cap exceeded");
+        Player storage p = lobby.playerState[player];
+        require(p.exists, "Unknown player");
+        _subtractResources(p.resources, take);
+        _addResources(p.resources, grant);
+        emit GameMasterAdjusted(lobbyId, player, narrative);
+    }
+
+    function getLobbyGameMaster(uint256 lobbyId) external view returns (address) {
+        return lobbies[lobbyId].gameMasterExecutor;
+    }
+
+    function getBankTradeParams() external pure returns (uint256 giveAmount, uint256 receiveAmount) {
+        return (GameConfig.bankTradeGiveAmount(), GameConfig.bankTradeReceiveAmount());
+    }
+
+    function previewCraftAlloyCost() external pure returns (Resources memory cost) {
+        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.craftAlloyCost();
+    }
+
+    function getVictoryGoodsThreshold() external pure returns (uint256) {
+        return GameConfig.victoryGoodsThreshold();
+    }
+
+    function getProposalCount(uint256 lobbyId) external view returns (uint256) {
+        return lobbies[lobbyId].proposals.length;
+    }
+
+    function getPlayerCraftedGoods(uint256 lobbyId, address playerAddress) external view returns (uint256) {
+        return lobbies[lobbyId].playerState[playerAddress].craftedGoods;
+    }
+
+    /// @notice Convert basics into alloy units; reaching `victoryGoodsThreshold` ends the game with a win.
+    function craftAlloy(uint256 lobbyId) external {
+        _syncRoundFromTimestamp(lobbyId);
+        Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
+        Player storage player = lobby.playerState[_actor()];
+        require(player.exists && player.alive, "Player not active");
+        Resources memory cost;
+        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.craftAlloyCost();
+        _subtractResources(player.resources, cost);
+        player.craftedGoods += GameConfig.craftAlloyYield();
+        emit GoodsCrafted(lobbyId, _actor(), player.craftedGoods);
+        if (player.craftedGoods >= GameConfig.victoryGoodsThreshold()) {
+            lobby.status = Status.Ended;
+            emit Victory(lobbyId, _actor());
+        }
+    }
+
+    /// @notice Leave the match; if one player remains, they win; if none, game is abandoned.
+    function concede(uint256 lobbyId) external {
+        _syncRoundFromTimestamp(lobbyId);
+        Lobby storage lobby = lobbies[lobbyId];
+        _requireNotEnded(lobby);
+        require(lobby.status == Status.Running, "Game not running");
+        address p = _actor();
+        Player storage pl = lobby.playerState[p];
+        require(pl.exists && pl.alive, "Bad player");
+        pl.alive = false;
+        emit PlayerConceded(lobbyId, p);
+        _finalizeLastStandingOrAbandon(lobby, lobbyId);
     }
 
     function _advanceRound(uint256 lobbyId, uint256 roundSeconds) internal {
@@ -635,6 +919,11 @@ contract GameCore is ActorAware {
 
     function getPlayerOwnedHexCount(uint256 lobbyId, address player) external view returns (uint256) {
         return lobbies[lobbyId].playerState[player].ownedHexCount;
+    }
+
+    function isPlayerAlive(uint256 lobbyId, address player) external view returns (bool) {
+        Player storage p = lobbies[lobbyId].playerState[player];
+        return p.exists && p.alive;
     }
 
     function getTrade(

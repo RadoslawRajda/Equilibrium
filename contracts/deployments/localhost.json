@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-11T14:45:26.580Z",
+  "deployedAt": "2026-04-11T16:01:29.764Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -6191,6 +6191,131 @@
             },
             {
               "indexed": false,
+              "internalType": "uint8",
+              "name": "sellKind",
+              "type": "uint8"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint8",
+              "name": "buyKind",
+              "type": "uint8"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "sellAmount",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "buyAmount",
+              "type": "uint256"
+            }
+          ],
+          "name": "BankTrade",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "GameAbandoned",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "proposalId",
+              "type": "uint256"
+            }
+          ],
+          "name": "GameEnded",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "string",
+              "name": "narrative",
+              "type": "string"
+            }
+          ],
+          "name": "GameMasterAdjusted",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "newTotal",
+              "type": "uint256"
+            }
+          ],
+          "name": "GoodsCrafted",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "indexed": false,
               "internalType": "string",
               "name": "hexId",
               "type": "string"
@@ -6265,6 +6390,25 @@
               "type": "uint256"
             },
             {
+              "indexed": true,
+              "internalType": "address",
+              "name": "executor",
+              "type": "address"
+            }
+          ],
+          "name": "LobbyGameMasterSet",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
               "indexed": false,
               "internalType": "uint256",
               "name": "roundIndex",
@@ -6316,6 +6460,25 @@
             }
           ],
           "name": "OwnershipTransferred",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            }
+          ],
+          "name": "PlayerConceded",
           "type": "event"
         },
         {
@@ -6611,6 +6774,25 @@
           "type": "event"
         },
         {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "winner",
+              "type": "address"
+            }
+          ],
+          "name": "Victory",
+          "type": "event"
+        },
+        {
           "inputs": [],
           "name": "acceptOwnership",
           "outputs": [],
@@ -6731,6 +6913,32 @@
             }
           ],
           "name": "collect",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "concede",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "craftAlloy",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -6899,6 +7107,111 @@
           "type": "function"
         },
         {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "food",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "wood",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stone",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "ore",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "energy",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct GameCore.Resources",
+              "name": "grant",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "food",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "wood",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stone",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "ore",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "energy",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct GameCore.Resources",
+              "name": "take",
+              "type": "tuple"
+            },
+            {
+              "internalType": "string",
+              "name": "narrative",
+              "type": "string"
+            }
+          ],
+          "name": "gameMasterAdjustResources",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getBankTradeParams",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "giveAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "receiveAmount",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
           "inputs": [],
           "name": "getBuildCost",
           "outputs": [
@@ -7010,6 +7323,25 @@
               "type": "uint256"
             }
           ],
+          "name": "getLobbyGameMaster",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            }
+          ],
           "name": "getLobbyPlayers",
           "outputs": [
             {
@@ -7084,6 +7416,30 @@
               "internalType": "uint8",
               "name": "mapRadius",
               "type": "uint8"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "playerAddress",
+              "type": "address"
+            }
+          ],
+          "name": "getPlayerCraftedGoods",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
             }
           ],
           "stateMutability": "view",
@@ -7205,6 +7561,25 @@
             {
               "internalType": "uint256",
               "name": "closeRound",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "getProposalCount",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
               "type": "uint256"
             }
           ],
@@ -7346,6 +7721,43 @@
           "type": "function"
         },
         {
+          "inputs": [],
+          "name": "getVictoryGoodsThreshold",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            }
+          ],
+          "name": "isPlayerAlive",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
           "inputs": [
             {
               "internalType": "uint256",
@@ -7439,6 +7851,46 @@
               "internalType": "uint256",
               "name": "",
               "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "previewCraftAlloyCost",
+          "outputs": [
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "food",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "wood",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stone",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "ore",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "energy",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct GameCore.Resources",
+              "name": "cost",
+              "type": "tuple"
             }
           ],
           "stateMutability": "pure",
@@ -7547,6 +7999,24 @@
               "type": "uint256"
             },
             {
+              "internalType": "address",
+              "name": "executor",
+              "type": "address"
+            }
+          ],
+          "name": "setLobbyGameMaster",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
               "internalType": "uint256",
               "name": "zeroRoundSeconds",
               "type": "uint256"
@@ -7558,6 +8028,29 @@
             }
           ],
           "name": "startGame",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "sellKind",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint8",
+              "name": "buyKind",
+              "type": "uint8"
+            }
+          ],
+          "name": "tradeWithBank",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"

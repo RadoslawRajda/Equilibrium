@@ -5,6 +5,9 @@ import { LobbyRepository } from "./lobbyRepository";
 describe("LobbyRepository", () => {
   it("maps lobby summaries from chain reads", async () => {
     const publicClient = {
+      async getBytecode() {
+        return "0x1234";
+      },
       async readContract({ functionName, args }: { functionName: string; args?: bigint[] }) {
         if (functionName === "getLobbyCount") return 1n;
         if (functionName === "getLobby" && args?.[0] === 1n) {
@@ -28,7 +31,7 @@ describe("LobbyRepository", () => {
       lobbyManagerAbi: []
     });
 
-    const summaries = await repo.loadSummaries();
+    const { lobbies: summaries } = await repo.loadSummaries();
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).toEqual({
       id: "1",
@@ -43,6 +46,9 @@ describe("LobbyRepository", () => {
   it("hydrates active lobby state and action costs", async () => {
     const viewerAddress = "0x1111111111111111111111111111111111111111";
     const publicClient = {
+      async getBytecode() {
+        return "0x1234";
+      },
       async readContract({ functionName, args }: { functionName: string; args?: any[] }) {
         if (functionName === "getLobby") {
           return [
@@ -59,6 +65,9 @@ describe("LobbyRepository", () => {
         if (functionName === "getLobbyRound") return null;
         if (functionName === "getMapConfig") return null;
         if (functionName === "getPlayerResources") return [50n, 40n, 30n, 20n, 10n];
+        if (functionName === "getPlayerCraftedGoods") return 0n;
+        if (functionName === "isPlayerAlive") return true;
+        if (functionName === "getProposalCount") return 0n;
         if (functionName === "getBuildCost") return [10n, 10n, 10n, 0n, 0n];
         if (functionName === "getUpgradeCost") return [30n, 0n, 30n, 30n, 0n];
         if (functionName === "previewDiscoverCost" && args?.[1] === viewerAddress) return [40n, 40n, 40n, 40n, 0n];

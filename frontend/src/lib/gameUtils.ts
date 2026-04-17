@@ -13,6 +13,20 @@ const hexDirections = [
   [0, 1]
 ] as const;
 
+export type ActionCost = {
+  food: number;
+  wood: number;
+  stone: number;
+  ore: number;
+  energy: number;
+};
+
+export type ActionCosts = {
+  discover: ActionCost;
+  build: ActionCost;
+  upgrade: ActionCost;
+};
+
 export const short = (address?: string) => (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "?");
 
 export const hexId = (q: number, r: number) => `${q},${r}`;
@@ -57,15 +71,61 @@ export const isAdjacentToOwnedHex = (hexes: HexTile[], target: HexTile, owner?: 
   return hexes.some((hex) => hex.owner?.toLowerCase() === owner.toLowerCase() && isAdjacent(hex, target));
 };
 
-export const formatCost = (cost: { food: number; wood?: number; stone?: number; ore?: number }) => {
-  const parts = [
-    `food ${cost.food}`,
-    cost.wood !== undefined ? `wood ${cost.wood}` : null,
-    cost.stone !== undefined ? `stone ${cost.stone}` : null,
-    cost.ore !== undefined ? `ore ${cost.ore}` : null
-  ].filter(Boolean);
+const finiteResource = (value: number | undefined) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
 
-  return parts.join(" / ");
+export const normalizeContractResources = (raw: unknown): ActionCost => {
+  const fromRecord = (record: Record<string, unknown>): ActionCost => {
+    const n = (key: string) => {
+      const v = record[key];
+      if (v === undefined || v === null) return 0;
+      const num = typeof v === "bigint" ? Number(v) : Number(v);
+      return Number.isFinite(num) ? num : 0;
+    };
+    return {
+      food: n("food"),
+      wood: n("wood"),
+      stone: n("stone"),
+      ore: n("ore"),
+      energy: n("energy")
+    };
+  };
+
+  if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
+    const keys = Object.keys(raw as object);
+    if (keys.includes("food") || keys.includes("energy")) {
+      return fromRecord(raw as Record<string, unknown>);
+    }
+  }
+
+  const arr = raw as unknown[] | null | undefined;
+  if (!Array.isArray(arr)) {
+    return { food: 0, wood: 0, stone: 0, ore: 0, energy: 0 };
+  }
+  const at = (i: number) => {
+    const v = arr[i];
+    if (v === undefined || v === null) return 0;
+    const num = typeof v === "bigint" ? Number(v) : Number(v);
+    return Number.isFinite(num) ? num : 0;
+  };
+  return { food: at(0), wood: at(1), stone: at(2), ore: at(3), energy: at(4) };
+};
+
+export const formatCost = (cost: Partial<ActionCost> & { food?: number }) => {
+  const food = finiteResource(cost.food);
+  const wood = finiteResource(cost.wood);
+  const stone = finiteResource(cost.stone);
+  const ore = finiteResource(cost.ore);
+  const energy = finiteResource(cost.energy);
+
+  const parts: string[] = [];
+  if (food > 0) parts.push(`food ${food}`);
+  if (wood > 0) parts.push(`wood ${wood}`);
+  if (stone > 0) parts.push(`stone ${stone}`);
+  if (ore > 0) parts.push(`ore ${ore}`);
+  if (energy > 0) parts.push(`energy ${energy}`);
+
+  return parts.length > 0 ? parts.join(" / ") : "free";
 };
 
 export const managerStatusToLabel = (status: number) => {
@@ -89,6 +149,8 @@ export const gameStatusToLabel = (status: number) => {
       return "zero-round";
     case 2:
       return "running";
+    case 3:
+      return "ended";
     default:
       return "waiting";
   }
@@ -96,29 +158,130 @@ export const gameStatusToLabel = (status: number) => {
 
 export const normalizeOwner = (value?: string | null) => (value && value !== zeroAddress ? value : null);
 
+export type HexTileContractFields = {
+  q: number;
+  r: number;
+  biome: number;
+  owner: string | null;
+  discovered: boolean;
+  structureExists: boolean;
+  structureLevel: number;
+  builtAtRound: number;
+  collectedAtRound: number;
+};
+
+export const parseHexTileContractResult = (raw: unknown): HexTileContractFields | null => {
+  if (raw == null) return null;
+  if (typeof raw === "object" && !Array.isArray(raw) && ("q" in (raw as object) || "owner" in (raw as object))) {
+    const o = raw as Record<string, unknown>;
+    const own = o.owner;
+    const addr = typeof own === "string" ? own : undefined;
+    return {
+      q: Number(o.q ?? 0),
+      r: Number(o.r ?? 0),
+      biome: Number(o.biome ?? 0),
+      owner: normalizeOwner(addr),
+      discovered: Boolean(o.discovered),
+      structureExists: Boolean(o.structureExists),
+      structureLevel: Number(o.structureLevel ?? 0),
+      builtAtRound: Number(o.builtAtRound ?? 0),
+      collectedAtRound: Number(o.collectedAtRound ?? 0)
+    };
+  }
+  const a = raw as unknown[];
+  if (!Array.isArray(a) || a.length < 6) return null;
+  const own = a[3];
+  const addr = typeof own === "string" ? own : undefined;
+  return {
+    q: Number(a[0] ?? 0),
+    r: Number(a[1] ?? 0),
+    biome: Number(a[2] ?? 0),
+    owner: normalizeOwner(addr),
+    discovered: Boolean(a[4]),
+    structureExists: Boolean(a[5]),
+    structureLevel: Number(a[6] ?? 0),
+    builtAtRound: Number(a[7] ?? 0),
+    collectedAtRound: Number(a[8] ?? 0)
+  };
+};
+
+export type LobbyRoundTuple = {
+  roundIndex: number;
+  roundEndsAt: number;
+  zeroRoundEndsAt: number;
+  status: number;
+  roundStartedAt: number;
+  roundDurationSeconds: number;
+};
+
+export const readLobbyRoundTuple = (raw: unknown): LobbyRoundTuple | null => {
+  if (raw == null) return null;
+  if (Array.isArray(raw)) {
+    return {
+      roundIndex: Number(raw[0] ?? 0),
+      roundEndsAt: Number(raw[1] ?? 0),
+      zeroRoundEndsAt: Number(raw[2] ?? 0),
+      status: Number(raw[3] ?? 0),
+      roundStartedAt: Number(raw[4] ?? 0),
+      roundDurationSeconds: Number(raw[5] ?? 0)
+    };
+  }
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    const n = (keys: string[]) => {
+      for (const k of keys) {
+        const v = o[k];
+        if (v !== undefined && v !== null) {
+          const num = typeof v === "bigint" ? Number(v) : Number(v);
+          return Number.isFinite(num) ? num : 0;
+        }
+      }
+      return 0;
+    };
+    return {
+      roundIndex: n(["roundIndex"]),
+      roundEndsAt: n(["roundEndsAt"]),
+      zeroRoundEndsAt: n(["zeroRoundEndsAt"]),
+      status: n(["status"]),
+      roundStartedAt: n(["roundStartedAt"]),
+      roundDurationSeconds: n(["roundDurationSeconds"])
+    };
+  }
+  return null;
+};
+
+export const readMapConfigTuple = (raw: unknown): { seed: bigint; radius: number } | null => {
+  if (raw == null) return null;
+  if (Array.isArray(raw)) {
+    return { seed: BigInt(raw[0] ?? 0), radius: Number(raw[1] ?? 0) };
+  }
+  if (typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    if (o.mapSeed != null) {
+      return {
+        seed: BigInt(o.mapSeed as bigint | string | number),
+        radius: Number(o.mapRadius ?? 0)
+      };
+    }
+  }
+  return null;
+};
+
 export const emptyResources = () => ({ food: 0, wood: 0, stone: 0, ore: 0, energy: 0 });
 
-export const buildPlayerState = (address: string, resources = emptyResources()) => ({
+export const buildPlayerState = (
+  address: string,
+  resources = emptyResources(),
+  craftedGoods = 0,
+  alive = true
+) => ({
   address,
   nickname: short(address),
   hasTicket: true,
   bankruptRounds: 0,
-  alive: true,
-  resources
+  alive,
+  resources,
+  craftedGoods
 });
-
-export type ActionCost = {
-  food: number;
-  wood: number;
-  stone: number;
-  ore: number;
-  energy: number;
-};
-
-export type ActionCosts = {
-  discover: ActionCost;
-  build: ActionCost;
-  upgrade: ActionCost;
-};
 
 export type { HexTile, LobbyState, ResourceKey };

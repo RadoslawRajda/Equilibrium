@@ -66,7 +66,7 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
 
                 return (
                   <motion.g
-                    key={hex.id}
+                    key={`${hex.id}:${hex.structure?.level ?? 0}:${hex.structure?.builtAtRound ?? 0}`}
                     animate={shake ? { x: [0, -2, 2, -2, 2, 0] } : { x: 0 }}
                     transition={{ duration: 0.45 }}
                   >

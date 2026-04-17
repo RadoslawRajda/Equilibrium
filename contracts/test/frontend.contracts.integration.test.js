@@ -52,10 +52,10 @@ describe("Frontend-contracts integration", function () {
     const hostResources = await gameCore.getPlayerResources(lobbyId, host.address);
 
     expect(buildCost[0]).to.equal(10n);
-    expect(upgradeCost[0]).to.equal(30n);
-    expect(discoverCost[0]).to.equal(40n);
-    expect(hostResources[0]).to.equal(50n);
-    expect(hostResources[4]).to.equal(100n);
+    expect(upgradeCost[0]).to.equal(28n);
+    expect(discoverCost[0]).to.equal(36n);
+    expect(hostResources[0]).to.equal(48n);
+    expect(hostResources[4]).to.equal(96n);
 
     const hex = await gameCore.getHexTile(lobbyId, "0,0");
     expect(Number(hex[0])).to.equal(0);

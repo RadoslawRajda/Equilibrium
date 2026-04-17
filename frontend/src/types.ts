@@ -21,13 +21,15 @@ export type PlayerState = {
   bankruptRounds: number;
   alive: boolean;
   resources: Record<ResourceKey, number>;
+  /** Smelted “alloy” from basics; victory at on-chain threshold */
+  craftedGoods?: number;
 };
 
 export type LobbyState = {
   id: string;
   name: string;
   host: string;
-  status: "waiting" | "zero-round" | "running";
+  status: "waiting" | "zero-round" | "running" | "ended";
   prizePool?: string;
   rounds: {
     index: number;
@@ -36,7 +38,6 @@ export type LobbyState = {
     nextRoundAt: number | null;
     zeroRoundEndsAt: number | null;
   };
-  pollution: number;
   players: PlayerState[];
   me: PlayerState | null;
   mapHexes: HexTile[];

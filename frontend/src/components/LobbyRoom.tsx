@@ -9,6 +9,7 @@ type Props = {
   isHost: boolean;
   hasTicket: boolean;
   canStart: boolean;
+  starting?: boolean;
   onBuyTicket: () => void;
   onStart: () => void;
   onCancel: () => void;
@@ -22,6 +23,7 @@ export function LobbyRoom({
   isHost,
   hasTicket,
   canStart,
+  starting = false,
   onBuyTicket,
   onStart,
   onCancel,
@@ -58,8 +60,8 @@ export function LobbyRoom({
         )}
         {isHost && (
           <>
-            <motion.button whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.04 }} onClick={onStart} disabled={!canStart}>
-              <Play size={18} /> Start
+            <motion.button whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.04 }} onClick={onStart} disabled={!canStart || starting}>
+              <Play size={18} /> {starting ? "Starting…" : "Start"}
             </motion.button>
             <motion.button whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.04 }} className="danger" onClick={onCancel}>
               Cancel lobby

@@ -40,6 +40,9 @@ contract MockERC8004Agent is Ownable2Step, ERC165, IERC8004Agent {
     }
 }
 
+/// @dev Relays agent decisions into `AIGameMaster` logs. To **affect balances**, also wire the same (or another)
+///      trusted address via `GameCore.setLobbyGameMaster` and call `gameMasterAdjustResources` from this adapter
+///      after `decideAction` (see `IGameMasterIntegration.sol` in /interfaces).
 contract ERC8004AIGameMasterAdapter is Ownable2Step, ReentrancyGuard {
     address public agent;
     AIGameMaster public gameMaster;
