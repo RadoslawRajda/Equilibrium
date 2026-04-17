@@ -1,7 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
-import { ArrowRightLeft, CheckCircle2, Factory, Flag, Hammer, Leaf, Sparkles, Vote } from "lucide-react";
+import {
+  ArrowRightLeft,
+  BatteryCharging,
+  CheckCircle2,
+  Factory,
+  Flag,
+  Hammer,
+  Leaf,
+  Pickaxe,
+  Sparkles,
+  TreePine,
+  UtensilsCrossed,
+  Vote,
+  Wheat
+} from "lucide-react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useAccount, useConnect, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
 import { createPublicClient, encodeFunctionData, formatEther, http, parseEther } from "viem";
@@ -1470,6 +1484,142 @@ function AppPage() {
     selectedActionCost = selectedActionCost ? `${selectedActionCost} · ${collectHint}` : collectHint;
   }
 
+  const costChip = (kind: ResourceKey, value: number) => {
+    const accents: Record<ResourceKey, string> = {
+      food: "#ffd369",
+      wood: "#5bff9d",
+      stone: "#96b7ff",
+      ore: "#ff9f6e",
+      energy: "#56f0ff"
+    };
+    const iconByKind: Record<ResourceKey, typeof Wheat> = {
+      food: Wheat,
+      wood: TreePine,
+      stone: Pickaxe,
+      ore: UtensilsCrossed,
+      energy: BatteryCharging
+    };
+    const Icon = iconByKind[kind];
+    return (
+      <span key={`${kind}:${value}`} className="spectator-res-chip" style={{ borderColor: `${accents[kind]}55` }} title={`${kind} ${value}`}>
+        <Icon size={12} color={accents[kind]} aria-hidden />
+        <strong>{value}</strong>
+      </span>
+    );
+  };
+
+  const costStrip = (cost: { food?: number; wood?: number; stone?: number; ore?: number; energy?: number }) => {
+    const entries = [
+      ["food", Number(cost.food ?? 0)] as const,
+      ["wood", Number(cost.wood ?? 0)] as const,
+      ["stone", Number(cost.stone ?? 0)] as const,
+      ["ore", Number(cost.ore ?? 0)] as const,
+      ["energy", Number(cost.energy ?? 0)] as const
+    ].filter(([, amount]) => Number.isFinite(amount) && amount > 0);
+    if (!entries.length) return <span className="selected-text">free</span>;
+    return entries.map(([kind, amount]) => costChip(kind, amount));
+  };
+
+  const hexById = (hexId: string) => activeLobby?.mapHexes.find((hex) => hex.id === hexId);
+  const isMineHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(hex?.owner && address && hex.owner.toLowerCase() === address.toLowerCase());
+  };
+  const canDiscoverHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(
+      hex &&
+      activeLobby?.status === "running" &&
+      !hex.owner &&
+      isAdjacentToOwnedHex(activeLobby?.mapHexes ?? [], hex, address)
+    );
+  };
+  const canUpgradeHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(hex && isMineHex(hexId) && hex.structure?.level === 1);
+  };
+  const canBuildHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(hex && isMineHex(hexId) && !hex.structure);
+  };
+  const collectInfoForHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    const level = hex?.structure?.level === 2 ? 2 : 1;
+    const energy = level === 2 ? activeActionCosts?.collectEnergyLevel2 : activeActionCosts?.collectEnergyLevel1;
+    const yieldValue = level === 2 ? activeActionCosts?.collectResourceYieldLevel2 : activeActionCosts?.collectResourceYieldLevel1;
+    const energyKnownForHex = typeof energy === "number" && Number.isFinite(energy);
+    const yieldKnownForHex = typeof yieldValue === "number" && Number.isFinite(yieldValue);
+    const energyLabelForHex = energyKnownForHex ? `energy ${energy}` : activeActionCosts ? "—" : "loading...";
+    const gainLabelForHex = yieldKnownForHex ? `+${yieldValue} basic (biome)` : "";
+    return {
+      canCollect: Boolean(hex && isMineHex(hexId) && hex.structure),
+      energyLabel: energyLabelForHex,
+      gainLabel: gainLabelForHex,
+      yieldValue,
+      yieldKnown: yieldKnownForHex
+    };
+  };
+
+  const hexContextMenuActions = {
+    discover: {
+      visible: (hexId: string) => canDiscoverHex(hexId),
+      enabled: () => !pendingAction,
+      label: "Discover / Claim",
+      details: discoverCost ? costStrip(discoverCost) : <span className="selected-text">loading...</span>,
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:discover", { hexId });
+      }
+    },
+    build: {
+      visible: (hexId: string) => canBuildHex(hexId),
+      enabled: () => !pendingAction,
+      label: "Build lvl1",
+      details: buildCost ? costStrip(buildCost) : <span className="selected-text">loading...</span>,
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:build", { hexId });
+      }
+    },
+    upgrade: {
+      visible: (hexId: string) => canUpgradeHex(hexId),
+      enabled: () => !pendingAction,
+      label: "Upgrade lvl2",
+      details: upgradeCost ? costStrip(upgradeCost) : <span className="selected-text">loading...</span>,
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:upgrade", { hexId });
+      }
+    },
+    collect: {
+      visible: (hexId: string) => collectInfoForHex(hexId).canCollect,
+      enabled: () => !pendingAction,
+      label: "Collect resources",
+      details: (hexId: string) => {
+        const collectInfo = collectInfoForHex(hexId);
+        const level = hexById(hexId)?.structure?.level === 2 ? 2 : 1;
+        const energyCost = level === 2 ? activeActionCosts?.collectEnergyLevel2 : activeActionCosts?.collectEnergyLevel1;
+        if (typeof energyCost !== "number" || !Number.isFinite(energyCost)) {
+          return <span className="selected-text">loading...</span>;
+        }
+        return (
+          <>
+            {costChip("energy", energyCost)}
+            {collectInfo.gainLabel ? <span className="selected-text">{collectInfo.gainLabel}</span> : null}
+          </>
+        );
+      },
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:collect", { hexId }, true);
+      }
+    }
+  };
+
   const walletConnectConnector = connectors.find((c) => c.id === "injected") || connectors[0];
 
   if (!isConnected) {
@@ -1699,6 +1849,7 @@ function AppPage() {
           myAddress={isSpectator ? undefined : address}
           selectedHex={highlightedHex}
           earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
+          contextMenuActions={isSpectator ? undefined : hexContextMenuActions}
           onHexClick={(id) => {
             if (pendingAction) return;
             setSelectedHex(id);
