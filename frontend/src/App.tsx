@@ -1649,7 +1649,7 @@ function AppPage() {
   return (
     <div className={`game-shell${isSpectator ? " game-shell--spectator" : ""}`}>
       {!isSpectator ? (
-        <ResourcePanel me={projectedMe} round={projectedRound.index} effects={activeLobby.activeEffects} />
+        <ResourcePanel me={projectedMe} round={projectedRound.index} effects={activeLobby.activeEffects} onBack={() => navigate("/")} />
       ) : (
         <aside className="panel spectator-sidebar">
           <SpectatorPlayersPanel
