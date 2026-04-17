@@ -12,6 +12,7 @@ import { HexMap } from "./components/HexMap";
 import { Lobby } from "./components/Lobby";
 import { LobbyRoom } from "./components/LobbyRoom";
 import { ResourcePanel } from "./components/ResourcePanel";
+import { SpectatorPlayersPanel } from "./components/SpectatorPlayersPanel";
 import { localGanache } from "./lib/wallet";
 import {
   ActionCosts,
@@ -552,6 +553,17 @@ function AppPage() {
       activeLobby?.players?.some((player) => player.address.toLowerCase() === address?.toLowerCase())
   );
   const canStartLobby = Boolean(activeLobby && activeLobby.status === "waiting" && isLobbyHost && activeLobby.players.length >= 1);
+
+  /** Wallet not in GameCore roster (no ticket / not joined) — read-only map + player sidebar. */
+  const isSpectator = useMemo(
+    () =>
+      Boolean(
+        activeLobby &&
+          (activeLobby.status === "zero-round" || activeLobby.status === "running") &&
+          activeLobby.me === null
+      ),
+    [activeLobby]
+  );
 
   const projectedRound = useMemo(() => {
     if (!activeLobby) {
@@ -1446,14 +1458,35 @@ function AppPage() {
   }
 
   return (
-    <div className="game-shell">
-      <ResourcePanel me={activeLobby.me} round={activeLobby.rounds.index} effects={activeLobby.activeEffects} />
+    <div className={`game-shell${isSpectator ? " game-shell--spectator" : ""}`}>
+      {!isSpectator ? (
+        <ResourcePanel me={activeLobby.me} round={activeLobby.rounds.index} effects={activeLobby.activeEffects} />
+      ) : (
+        <aside className="panel spectator-sidebar">
+          <SpectatorPlayersPanel
+            players={activeLobby.players}
+            host={activeLobby.host}
+            round={projectedRound.index}
+            statusLabel={activeLobby.status === "zero-round" ? "Starting positions" : "Live match"}
+            victoryAlloyTarget={victoryAlloyTarget}
+            viewerNeedsGameCoreJoin={Boolean(activeLobby.viewerNeedsGameCoreJoin && address)}
+            onBack={() => navigate("/")}
+          />
+        </aside>
+      )}
 
-      <main className="map-main">
+      <main className={`map-main${isSpectator ? " map-main--spectator" : ""}`}>
         <div className="top-hud">
           <div>
             <h2>{activeLobby.name}</h2>
-            <p>{activeLobby.status === "zero-round" ? "Round 0: choose your starting hex" : `Round ${projectedRound.index}`}</p>
+            <p>
+              {isSpectator ? (
+                <span className="round-timer" style={{ marginRight: "0.5rem" }}>
+                  Spectator
+                </span>
+              ) : null}
+              {activeLobby.status === "zero-round" ? "Round 0: choose your starting hex" : `Round ${projectedRound.index}`}
+            </p>
           </div>
           <div className="top-hud-meta">
             <span className="round-timer">{projectedRound.deadlineSec ? `Time left ${formatCountdown(roundCountdown)}` : "Waiting for round"}</span>
@@ -1464,7 +1497,7 @@ function AppPage() {
 
         <HexMap
           hexes={activeLobby.mapHexes}
-          myAddress={address}
+          myAddress={isSpectator ? undefined : address}
           selectedHex={highlightedHex}
           earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
           onHexClick={(id) => {
@@ -1473,7 +1506,15 @@ function AppPage() {
           }}
         />
 
-        {address && activeLobby.me === null && (activeLobby.status === "running" || activeLobby.status === "zero-round") ? (
+        {isSpectator && selectedForDetails ? (
+          <div className="spectator-map-footer">
+            Hex <strong>{selectedForDetails.id}</strong> · {selectedForDetails.biome} · owner{" "}
+            <strong>{selectedOwner?.nickname ?? short(selectedForDetails.owner ?? undefined) ?? "none"}</strong>
+            {selectedForDetails.structure ? ` · structure L${selectedForDetails.structure.level}` : ""}
+          </div>
+        ) : null}
+
+        {!isSpectator && address && activeLobby.me === null && (activeLobby.status === "running" || activeLobby.status === "zero-round") ? (
           <p className="error-banner">
             This wallet is not a player in this lobby. Connect a wallet that holds a ticket for this match.
           </p>
@@ -1481,6 +1522,7 @@ function AppPage() {
         {error && <p className="error-banner">{error}</p>}
       </main>
 
+      {!isSpectator ? (
       <aside className="panel right-panel">
         <h3>Selected Hex</h3>
         <p className="selected-text">Selected: {selectedForDetails?.id ?? "none"}</p>
@@ -1815,6 +1857,7 @@ function AppPage() {
           ))}
         </div>
       </aside>
+      ) : null}
     </div>
   );
 }
