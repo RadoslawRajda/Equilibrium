@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, LogOut, Play, TicketX, Wallet } from "lucide-react";
+import { ArrowLeft, Bot, LogOut, Play, TicketX, Wallet } from "lucide-react";
+import { useState } from "react";
 import type { LobbyState } from "../types";
 import { short } from "../lib/gameUtils";
 
@@ -20,6 +21,11 @@ type Props = {
   onBack: () => void;
   onDisconnect: () => void;
   actionError?: string;
+  /** Lowercased addresses of ERC-8004-style registered agents (from agent registry). */
+  agentAddresses?: Set<string>;
+  registeredAgents?: { address: string; name: string }[];
+  onInviteAgent?: (agentAddress: string) => void;
+  inviteAgentPending?: boolean;
 };
 
 export function LobbyRoom({
@@ -38,8 +44,13 @@ export function LobbyRoom({
   onCancel,
   onBack,
   onDisconnect,
-  actionError
+  actionError,
+  agentAddresses,
+  registeredAgents = [],
+  onInviteAgent,
+  inviteAgentPending = false
 }: Props) {
+  const [invitePick, setInvitePick] = useState("");
   return (
     <div className="lobby-shell lobby-room-shell">
       <header className="lobby-room-header">
@@ -82,6 +93,34 @@ export function LobbyRoom({
             {leaveLobbyPending ? "Leaving…" : "Exit lobby (refund)"}
           </motion.button>
         ) : null}
+        {isHost && registeredAgents.length > 0 && onInviteAgent ? (
+          <div className="lobby-invite-agent" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+            <label>
+              Invite AI agent
+              <select
+                value={invitePick}
+                onChange={(e) => setInvitePick(e.target.value)}
+                style={{ marginLeft: "0.5rem" }}
+              >
+                <option value="">—</option>
+                {registeredAgents.map((a) => (
+                  <option key={a.address} value={a.address}>
+                    {a.name} ({short(a.address)})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.96 }}
+              whileHover={{ scale: 1.04 }}
+              disabled={!invitePick || inviteAgentPending}
+              onClick={() => invitePick && onInviteAgent(invitePick)}
+            >
+              {inviteAgentPending ? "Sending…" : "Send invite"}
+            </motion.button>
+          </div>
+        ) : null}
         {isHost && (
           <>
             <motion.button whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.04 }} onClick={onStart} disabled={!canStart || starting}>
@@ -104,17 +143,23 @@ export function LobbyRoom({
       <section className="lobby-list">
         <h2>Players</h2>
         {lobby.players.length === 0 && <p>No players yet.</p>}
-        {lobby.players.map((player) => (
-          <motion.div key={player.address} className="lobby-card" whileHover={{ y: -2 }}>
-            <div>
-              <h3>{player.nickname}</h3>
-              <p>
-                {short(player.address)} {player.address.toLowerCase() === lobby.host.toLowerCase() ? "• host" : ""}
-              </p>
-            </div>
-            <span>{player.hasTicket ? "ticket" : "no ticket"}</span>
-          </motion.div>
-        ))}
+        {lobby.players.map((player) => {
+          const isAgent = agentAddresses?.has(player.address.toLowerCase());
+          return (
+            <motion.div key={player.address} className="lobby-card" whileHover={{ y: -2 }}>
+              <div>
+                <h3 style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                  {isAgent ? <Bot size={18} aria-label="AI agent" title="Registered AI agent" /> : null}
+                  {player.nickname}
+                </h3>
+                <p>
+                  {short(player.address)} {player.address.toLowerCase() === lobby.host.toLowerCase() ? "• host" : ""}
+                </p>
+              </div>
+              <span>{player.hasTicket ? "ticket" : "no ticket"}</span>
+            </motion.div>
+          );
+        })}
       </section>
     </div>
   );

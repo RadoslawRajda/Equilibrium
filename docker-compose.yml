@@ -73,6 +73,32 @@ services:
       - ganache
       - hardhat
 
+  agent-registry:
+    build: ./agents/registry
+    ports:
+      - "4050:4050"
+
+  equinox-agent:
+    build: ./agents/equinox-player
+    environment:
+      RPC_URL: http://ganache:8545
+      REGISTRY_URL: http://agent-registry:4050
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      AGENT_ACCOUNT_INDEX: "10"
+      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
+      POLL_MS: "8000"
+      AGENT_NAME: Equinox
+    volumes:
+      - ./contracts/deployments:/contracts/deployments:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - ganache
+      - hardhat
+      - agent-registry
+
   frontend:
     image: node:20-alpine
     working_dir: /app
@@ -84,6 +110,7 @@ services:
       - VITE_RPC_URL=http://localhost:8545
       - VITE_BUNDLER_URL=/bundler
       - VITE_WALLETCONNECT_PROJECT_ID=demo-project-id
+      - VITE_AGENT_REGISTRY_URL=http://localhost:4050
     ports:
       - "3000:3000"
     command: >

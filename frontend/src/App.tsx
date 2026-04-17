@@ -127,6 +127,7 @@ function AppPage() {
   const [ticketPriceWei, setTicketPriceWei] = useState<bigint | null>(null);
   /** LobbyManager.playerBalance(address) — call withdraw() to receive ETH. */
   const [lmWithdrawableWei, setLmWithdrawableWei] = useState<bigint | null>(null);
+  const [registryAgents, setRegistryAgents] = useState<{ address: string; name: string }[]>([]);
   const lobbySnapshotRef = useRef<LobbyState | null>(null);
   const localHexOverridesRef = useRef(
     new Map<string, { owner: string; discoveredBy: string[]; structure?: LobbyState["mapHexes"][number]["structure"] }>()
@@ -255,6 +256,9 @@ function AppPage() {
       lobbySessionPaymasterAddress
     };
   }, [contracts]);
+
+  /** When set, bootstrap/join/start after ticket use session UserOps (bundler + paymaster) instead of EOA MetaMask txs. */
+  const useAaForLobbyFollowups = Boolean(aaConfig.bundlerUrl?.trim());
 
   const aaClientRef = useRef<{
     owner?: string;
@@ -592,6 +596,34 @@ function AppPage() {
     ? Math.max(0, projectedRound.deadlineSec - nowSec)
     : null;
 
+  const agentAddressSet = useMemo(
+    () => new Set(registryAgents.map((a) => a.address.toLowerCase())),
+    [registryAgents]
+  );
+
+  useEffect(() => {
+    const base = import.meta.env.VITE_AGENT_REGISTRY_URL as string | undefined;
+    if (!base) return;
+    let cancelled = false;
+    void fetch(`${base.replace(/\/$/, "")}/agents`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: unknown) => {
+        if (cancelled || !Array.isArray(data)) return;
+        setRegistryAgents(
+          data
+            .map((x: { address?: string; name?: string }) => ({
+              address: String(x.address ?? ""),
+              name: String(x.name ?? "Agent")
+            }))
+            .filter((x) => x.address.startsWith("0x"))
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const sync = async () => {
@@ -741,16 +773,24 @@ function AppPage() {
         throw new Error("Unable to determine created lobby id");
       }
 
-      const bootstrapTx = await walletClient.writeContract({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
-        functionName: "bootstrapLobby",
-        account: address,
-        args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
-      } as any);
+      const bootstrapHash = useAaForLobbyFollowups
+        ? await sendSessionTransaction({
+            lobbyId: String(createdLobbyId),
+            contractAddress: gameCoreAddress,
+            contractAbi: gameCoreAbi,
+            functionName: "bootstrapLobby",
+            args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
+          })
+        : await walletClient.writeContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "bootstrapLobby",
+            account: address,
+            args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
+          } as any);
 
       const bootstrapReceipt = await publicClient.waitForTransactionReceipt({
-        hash: bootstrapTx as `0x${string}`
+        hash: bootstrapHash as `0x${string}`
       });
       if (bootstrapReceipt.status !== "success") {
         throw new Error("bootstrapLobby transaction reverted");
@@ -817,14 +857,22 @@ function AppPage() {
       } as any);
       await publicClient.waitForTransactionReceipt({ hash: buyTx as `0x${string}` });
 
-      const joinTx = await walletClient.writeContract({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
-        functionName: "joinLobby",
-        account: address,
-        args: [BigInt(activeLobby.id)]
-      } as any);
-      await publicClient.waitForTransactionReceipt({ hash: joinTx as `0x${string}` });
+      const joinHash = useAaForLobbyFollowups
+        ? await sendSessionTransaction({
+            lobbyId: activeLobby.id,
+            contractAddress: gameCoreAddress,
+            contractAbi: gameCoreAbi,
+            functionName: "joinLobby",
+            args: [BigInt(activeLobby.id)]
+          })
+        : await walletClient.writeContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "joinLobby",
+            account: address,
+            args: [BigInt(activeLobby.id)]
+          } as any);
+      await publicClient.waitForTransactionReceipt({ hash: joinHash as `0x${string}` });
       confetti({ particleCount: 100, spread: 75, origin: { y: 0.75 } });
       await syncActiveLobbyFromChain(activeLobby.id);
       await syncLobbiesFromChain();
@@ -843,14 +891,22 @@ function AppPage() {
         throw new Error("Wallet or RPC client unavailable");
       }
 
-      const lobbyStartTx = await walletClient.writeContract({
-        address: lobbyManagerAddress,
-        abi: lobbyManagerAbi,
-        functionName: "startGame",
-        account: address,
-        args: [BigInt(activeLobby.id)]
-      } as any);
-      const lobbyStartReceipt = await publicClient.waitForTransactionReceipt({ hash: lobbyStartTx as `0x${string}` });
+      const lobbyStartHash = useAaForLobbyFollowups
+        ? await sendSessionTransaction({
+            lobbyId: activeLobby.id,
+            contractAddress: lobbyManagerAddress,
+            contractAbi: lobbyManagerAbi,
+            functionName: "startGame",
+            args: [BigInt(activeLobby.id)]
+          })
+        : await walletClient.writeContract({
+            address: lobbyManagerAddress,
+            abi: lobbyManagerAbi,
+            functionName: "startGame",
+            account: address,
+            args: [BigInt(activeLobby.id)]
+          } as any);
+      const lobbyStartReceipt = await publicClient.waitForTransactionReceipt({ hash: lobbyStartHash as `0x${string}` });
       if (lobbyStartReceipt.status !== "success") {
         throw new Error("LobbyManager.startGame transaction reverted");
       }
@@ -858,14 +914,22 @@ function AppPage() {
       if (!lobbyManagerAddress) {
         throw new Error("LobbyManager address missing");
       }
-      const gameStartTx = await walletClient.writeContract({
-        address: gameCoreAddress,
-        abi: gameCoreAbi,
-        functionName: "startGame",
-        account: address,
-        args: [BigInt(activeLobby.id), BigInt(300), BigInt(300), lobbyManagerAddress]
-      } as any);
-      const gameStartReceipt = await publicClient.waitForTransactionReceipt({ hash: gameStartTx as `0x${string}` });
+      const gameStartHash = useAaForLobbyFollowups
+        ? await sendSessionTransaction({
+            lobbyId: activeLobby.id,
+            contractAddress: gameCoreAddress,
+            contractAbi: gameCoreAbi,
+            functionName: "startGame",
+            args: [BigInt(activeLobby.id), BigInt(300), BigInt(300), lobbyManagerAddress]
+          })
+        : await walletClient.writeContract({
+            address: gameCoreAddress,
+            abi: gameCoreAbi,
+            functionName: "startGame",
+            account: address,
+            args: [BigInt(activeLobby.id), BigInt(300), BigInt(300), lobbyManagerAddress]
+          } as any);
+      const gameStartReceipt = await publicClient.waitForTransactionReceipt({ hash: gameStartHash as `0x${string}` });
       if (gameStartReceipt.status !== "success") {
         throw new Error("GameCore.startGame transaction reverted");
       }
@@ -931,6 +995,27 @@ function AppPage() {
     } catch (e: any) {
       setError(e.message);
       console.error("leaveOpenLobby failed", e);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const onInviteAgent = async (agentAddress: string) => {
+    const base = import.meta.env.VITE_AGENT_REGISTRY_URL as string | undefined;
+    if (!base || !activeLobby || !address) return;
+    setError("");
+    setPendingAction("lobby:invite-agent");
+    try {
+      const res = await fetch(`${base.replace(/\/$/, "")}/lobbies/${activeLobby.id}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetAddress: agentAddress, hostAddress: address })
+      });
+      if (!res.ok) {
+        throw new Error(`Invite failed: ${res.status}`);
+      }
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setPendingAction(null);
     }
@@ -1352,6 +1437,10 @@ function AppPage() {
         onBack={() => navigate("/")}
         onDisconnect={() => disconnect()}
         actionError={error}
+        agentAddresses={agentAddressSet}
+        registeredAgents={registryAgents}
+        onInviteAgent={onInviteAgent}
+        inviteAgentPending={pendingAction === "lobby:invite-agent"}
       />
     );
   }

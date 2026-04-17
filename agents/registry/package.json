@@ -1,0 +1,14 @@
+{
+  "name": "@cryptocatan/agent-registry",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5"
+  }
+}
