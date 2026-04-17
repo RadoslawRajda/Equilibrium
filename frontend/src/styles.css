@@ -140,6 +140,13 @@ button:disabled {
   gap: 0.65rem;
 }
 
+.map-toggle-button {
+  border-radius: 999px;
+  padding: 0.35rem 0.62rem;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
 .round-timer {
   font-size: 0.86rem;
   color: #dfe8ff;
@@ -153,12 +160,66 @@ button:disabled {
   flex: 1;
   min-height: 0;
   height: calc(100vh - 160px);
+  position: relative;
   border: 1px solid rgba(118, 157, 255, 0.2);
   border-radius: 18px;
   background:
     radial-gradient(circle at 20% 10%, rgba(255, 211, 105, 0.15), transparent 32%),
     radial-gradient(circle at 80% 75%, rgba(86, 240, 255, 0.1), transparent 32%),
     linear-gradient(180deg, #0c1232, #10173f);
+}
+
+.hex-hover-badge {
+  position: absolute;
+  left: 0.8rem;
+  bottom: 0.8rem;
+  z-index: 8;
+  font-size: 0.78rem;
+  color: #d8ebff;
+  border: 1px solid rgba(130, 160, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(6, 11, 34, 0.75);
+  padding: 0.28rem 0.58rem;
+  pointer-events: none;
+}
+
+.hex-context-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 180px;
+  max-width: 220px;
+  border: 1px solid rgba(118, 157, 255, 0.35);
+  border-radius: 12px;
+  background: rgba(7, 11, 32, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: #eaf3ff;
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 0.52rem 0.62rem;
+  backdrop-filter: blur(6px);
+}
+
+.hex-context-menu__actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.hex-context-menu__actions button {
+  flex: 1;
+  justify-content: center;
+  padding: 0.38rem 0.45rem;
+  border-radius: 8px;
+  font-size: 0.74rem;
+}
+
+.hex-context-menu p {
+  margin: 0.1rem 0;
+}
+
+.hex-context-menu__title {
+  font-weight: 800;
+  margin-bottom: 0.26rem !important;
 }
 
 .resource-grid {
