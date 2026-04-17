@@ -2,9 +2,9 @@ import { motion } from "framer-motion";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { HexGrid, Layout, Hexagon, Text } from "react-hexgrid";
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
-import { BatteryCharging, Pickaxe, TreePine, Wheat } from "lucide-react";
 import type { HexTile } from "../types";
 import { colorFromAddress } from "../utils/helpers/converters";
+import { biomeResourceMeta } from "./biomeResourceMeta";
 
 type Props = {
   hexes: HexTile[];
@@ -36,13 +36,6 @@ const biomeStyle: Record<string, { fill: string; stroke: string; resource: strin
   Forest: { fill: "url(#forestGradient)", stroke: "#5bff9d", resource: "wood" },
   Mountains: { fill: "url(#mountainGradient)", stroke: "#9cc4ff", resource: "stone/ore" },
   Desert: { fill: "url(#desertGradient)", stroke: "#ffad69", resource: "energy" }
-};
-
-const biomeResourceMeta: Record<HexTile["biome"], { label: string; color: string; Icon: typeof Wheat }> = {
-  Plains: { label: "food", color: "#ffd369", Icon: Wheat },
-  Forest: { label: "wood", color: "#5bff9d", Icon: TreePine },
-  Mountains: { label: "stone/ore", color: "#96b7ff", Icon: Pickaxe },
-  Desert: { label: "energy", color: "#56f0ff", Icon: BatteryCharging }
 };
 
 export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [], contextMenuActions }: Props) {

@@ -2,7 +2,6 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { EffectComposer, SMAA } from "@react-three/postprocessing";
-import { BatteryCharging, Gem, Pickaxe, TreePine, Wheat } from "lucide-react";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Box3, DoubleSide, Path, Shape, SRGBColorSpace, TextureLoader, Vector3 } from "three";
 import type { Group, Mesh, MeshStandardMaterial, Object3D, Texture } from "three";
@@ -10,6 +9,7 @@ import type { HexTile } from "../types";
 import { BIOME_ASSET_KEY, MAP_3D_ASSETS, type Map3dAssetConfig, type Map3dAssetKey } from "../config/map3dAssets";
 import { generateTilePropPlan, type PropInstancePlan } from "../config/map3dProps";
 import { colorFromAddress } from "../utils/helpers/converters";
+import { biomeResourceMeta } from "./biomeResourceMeta";
 
 type Props = {
   hexes: HexTile[];
@@ -41,13 +41,6 @@ const biomeStyle: Record<string, { base: string; edge: string; glow: string; res
   Forest: { base: "#4cbc79", edge: "#5bff9d", glow: "#9fffc8", resource: "wood" },
   Mountains: { base: "#5f84cf", edge: "#9cc4ff", glow: "#d1e4ff", resource: "stone/ore" },
   Desert: { base: "#e49b55", edge: "#ffad69", glow: "#ffd8b0", resource: "energy" }
-};
-
-const biomeResourceMeta: Record<HexTile["biome"], { label: string; color: string; Icon: typeof Wheat }> = {
-  Plains: { label: "food", color: "#ffd369", Icon: Wheat },
-  Forest: { label: "wood", color: "#5bff9d", Icon: TreePine },
-  Mountains: { label: "stone/ore", color: "#96b7ff", Icon: Pickaxe },
-  Desert: { label: "energy", color: "#56f0ff", Icon: BatteryCharging }
 };
 
 const HEX_RADIUS = 1.9;
