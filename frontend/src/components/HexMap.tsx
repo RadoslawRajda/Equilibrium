@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { EffectComposer, SMAA } from "@react-three/postprocessing";
+import { Bloom, BrightnessContrast, EffectComposer, Noise, SMAA, Vignette } from "@react-three/postprocessing";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Box3, DoubleSide, Path, Shape, SRGBColorSpace, TextureLoader, Vector3 } from "three";
 import type { Group, Mesh, MeshStandardMaterial, Object3D, Texture } from "three";
@@ -17,6 +17,7 @@ type Props = {
   selectedHex?: string;
   earthquakeTargets?: string[];
   onHexClick: (hexId: string) => void;
+  onBackgroundClick?: () => void;
   contextMenuActions?: HexContextMenuActions;
 };
 
@@ -724,7 +725,7 @@ function HexTileMesh({
   );
 }
 
-export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [], contextMenuActions }: Props) {
+export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackgroundClick, earthquakeTargets = [], contextMenuActions }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const quakeSet = useMemo(() => new Set(earthquakeTargets), [earthquakeTargets]);
@@ -914,6 +915,7 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
         onPointerMissed={() => {
           setHoveredHex(undefined);
           setContextMenu(null);
+          onBackgroundClick?.();
         }}
       >
         <ambientLight intensity={0.62} />
@@ -963,12 +965,22 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
           zoomSpeed={0.95}
           minDistance={10}
           maxDistance={70}
-          minPolarAngle={Math.PI * 0.12}
-          maxPolarAngle={Math.PI * 0.49}
+          minPolarAngle={0}
+          maxPolarAngle={Math.PI / 2 - (20 * Math.PI) / 180}
         />
 
-        <EffectComposer disableNormalPass multisampling={0}>
+        <EffectComposer enableNormalPass={false} multisampling={0}>
           <SMAA />
+          <Bloom
+            mipmapBlur
+            intensity={0.78}
+            luminanceThreshold={0.13}
+            luminanceSmoothing={0.44}
+            radius={0.94}
+          />
+          <BrightnessContrast brightness={0.02} contrast={0.16} />
+          <Noise opacity={0.02} premultiply />
+          <Vignette eskil={false} offset={0.14} darkness={0.58} />
         </EffectComposer>
       </Canvas>
 

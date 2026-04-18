@@ -12,6 +12,7 @@ type Props = {
   selectedHex?: string;
   earthquakeTargets?: string[];
   onHexClick: (hexId: string) => void;
+  onBackgroundClick?: () => void;
   contextMenuActions?: HexContextMenuActions;
 };
 
@@ -38,7 +39,7 @@ const biomeStyle: Record<string, { fill: string; stroke: string; resource: strin
   Desert: { fill: "url(#desertGradient)", stroke: "#ffad69", resource: "ore" }
 };
 
-export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [], contextMenuActions }: Props) {
+export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, onBackgroundClick, earthquakeTargets = [], contextMenuActions }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const quakeSet = new Set(earthquakeTargets);
@@ -143,6 +144,7 @@ export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, earthquake
       onClick={(event) => {
         if (!(event.target as HTMLElement).closest(".hex-context-menu")) {
           setContextMenu(null);
+          onBackgroundClick?.();
         }
       }}
       onContextMenu={(event) => {
@@ -196,11 +198,13 @@ export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, earthquake
                       r={hex.r}
                       s={-hex.q - hex.r}
                       onClick={(event) => {
+                        event.stopPropagation();
                         onHexClick(hex.id);
                         setContextMenu(null);
                       }}
                       onContextMenu={(event) => {
                         event.preventDefault();
+                        event.stopPropagation();
                         const native = event as unknown as MouseEvent;
                         onHexClick(hex.id);
                         openContextMenu(hex.id, native.clientX, native.clientY);

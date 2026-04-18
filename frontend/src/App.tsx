@@ -9,7 +9,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  Diamond,
+  Gem,
   Factory,
   Flag,
   Hammer,
@@ -33,7 +33,6 @@ import { HexMap } from "./components/HexMap";
 import { HexMap2D } from "./components/HexMap2D";
 import { Lobby } from "./components/Lobby";
 import { LobbyRoom } from "./components/LobbyRoom";
-import { ResourcePanel } from "./components/ResourcePanel";
 import { SpectatorPlayersPanel } from "./components/SpectatorPlayersPanel";
 import { SpectatorTradeFeed } from "./components/SpectatorTradeFeed";
 import { SpectatorOnChainTrades } from "./components/SpectatorOnChainTrades";
@@ -245,7 +244,7 @@ function AppPage() {
   { label: "food", icon: Wheat, color: "#ffd369" },
   { label: "wood", icon: TreePine, color: "#5bff9d" },
   { label: "stone", icon: Pickaxe, color: "#96b7ff" },
-  { label: "ore", icon: Diamond, color: "#ff9f6e" },
+  { label: "ore", icon: Gem, color: "#ff9f6e" },
   { label: "energy", icon: BatteryCharging, color: "#56f0ff" }
 ];
   const [bankSellKind, setBankSellKind] = useState(0);
@@ -2127,9 +2126,7 @@ function AppPage() {
 
   return (
     <div className={`game-shell${isSpectator ? " game-shell--spectator" : ""}`}>
-      {!isSpectator ? (
-        <ResourcePanel me={projectedMe} round={projectedRound.index} effects={activeLobby.activeEffects} onBack={() => navigate("/")} />
-      ) : (
+      {isSpectator ? (
         <aside className="panel spectator-sidebar">
           <SpectatorPlayersPanel
             players={projectedPlayers}
@@ -2143,7 +2140,7 @@ function AppPage() {
           <SpectatorOnChainTrades offers={activeLobby.barterOffers} effectiveRoundIndex={tradeRoundIndex} shortAddr={short} />
           <SpectatorTradeFeed items={spectatorTradeFeed} loading={spectatorTradeFeedLoading} />
         </aside>
-      )}
+      ) : null}
 
       <main className={`map-main${isSpectator ? " map-main--spectator" : ""}`}>
         <div className="top-hud">
@@ -2173,17 +2170,39 @@ function AppPage() {
           <p>Status: {activeLobby.status}</p>
         </div>
 
-        <ActiveMapComponent
-          hexes={activeLobby.mapHexes}
-          myAddress={isSpectator ? undefined : address}
-          selectedHex={highlightedHex}
-          earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
-          contextMenuActions={isSpectator ? undefined : hexContextMenuActions}
-          onHexClick={(id) => {
-            if (pendingAction) return;
-            setSelectedHex(id);
-          }}
-        />
+        <div className="map-stage">
+          {!isSpectator ? (
+            <div className="map-resource-strip" aria-label="Your resources">
+              {[
+                { key: "food", label: "Food", icon: Wheat, color: "#ffd369", value: projectedMe?.resources.food ?? 0 },
+                { key: "wood", label: "Wood", icon: TreePine, color: "#5bff9d", value: projectedMe?.resources.wood ?? 0 },
+                { key: "stone", label: "Stone", icon: Pickaxe, color: "#96b7ff", value: projectedMe?.resources.stone ?? 0 },
+                { key: "ore", label: "Ore", icon: Gem, color: "#ff9f6e", value: projectedMe?.resources.ore ?? 0 },
+                { key: "energy", label: "Energy", icon: BatteryCharging, color: "#56f0ff", value: projectedMe?.resources.energy ?? 0 },
+                { key: "alloy", label: "Alloy", icon: Factory, color: "#e0b0ff", value: projectedMe?.craftedGoods ?? 0 }
+              ].map((resource) => (
+                <div key={resource.key} className="map-resource-item">
+                  <resource.icon size={18} color={resource.color} aria-hidden />
+                  <span className="map-resource-item-label">{resource.label}:</span>
+                  <strong className="map-resource-item-value">{resource.value}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <ActiveMapComponent
+            hexes={activeLobby.mapHexes}
+            myAddress={isSpectator ? undefined : address}
+            selectedHex={selectedHex}
+            earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
+            contextMenuActions={isSpectator ? undefined : hexContextMenuActions}
+            onBackgroundClick={() => setSelectedHex(undefined)}
+            onHexClick={(id) => {
+              if (pendingAction) return;
+              setSelectedHex(id);
+            }}
+          />
+        </div>
 
         {isSpectator && selectedForDetails ? (
           <div className="spectator-map-footer">
@@ -2675,6 +2694,14 @@ function AppPage() {
             </button>
 
             {/* Przycisk rozłączenia portfela */}
+            <button 
+              type="button"
+              style={{ width: '100%', opacity: 0.8 }}
+              onClick={() => navigate("/")}
+            >
+              Return to lobby
+            </button>
+
             <button 
               type="button"
               style={{ width: '100%', opacity: 0.8 }}
