@@ -68,6 +68,8 @@ export const MAP_3D_SHARED_PROP_TEXTURE = {
 /** Current delivered biome texture atlases (separate per folder). */
 const FOREST_PROP_TEXTURE_URL = "/assets/forest/Forest_props.png";
 const DESERT_PROP_TEXTURE_URL = "/assets/desert/Desert_props.png";
+const PLAINS_PROP_TEXTURE_URL = "/assets/plains/Plains_prop.png";
+const MOUNTAIN_PROP_TEXTURE_URL = "/assets/mountain/Mountain_prop.png";
 
 /**
  * Master biome prop config.
@@ -128,9 +130,53 @@ export const MAP_3D_BIOME_PROP_SETS: Record<BiomeName, BiomePropSet> = {
     ]
   },
   Plains: {
-    // Pending artist delivery for plains props.
-    maxInstancesPerTile: 0,
-    rules: []
+    maxInstancesPerTile: 14,
+    rules: [
+      {
+        asset: { id: "plains.flowers.1", url: "/assets/plains/flowers_1.gltf", textureUrl: PLAINS_PROP_TEXTURE_URL },
+        weight: 9,
+        quantity: { min: 2, max: 4 },
+        radialPlacement: { minRadius: 0.15, maxRadius: 1.45 },
+        keepOutRadiusFromStructure: 0.5,
+        randomYawDeg: { min: 0, max: 360 },
+        randomScale: { min: 0.704, max: 0.92 },
+        tags: ["flowers", "foliage"],
+        removeOnStructureLevel: [1, 2]
+      },
+      {
+        asset: { id: "plains.flowers.2", url: "/assets/plains/flowers_2.gltf", textureUrl: PLAINS_PROP_TEXTURE_URL },
+        weight: 8,
+        quantity: { min: 0, max: 4 },
+        radialPlacement: { minRadius: 0.15, maxRadius: 1.45 },
+        keepOutRadiusFromStructure: 0.5,
+        randomYawDeg: { min: 0, max: 360 },
+        randomScale: { min: 0.672, max: 0.88 },
+        tags: ["flowers", "foliage"],
+        removeOnStructureLevel: [1, 2]
+      },
+      {
+        asset: { id: "plains.flowers.3", url: "/assets/plains/flowers_3.gltf", textureUrl: PLAINS_PROP_TEXTURE_URL },
+        weight: 7,
+        quantity: { min: 0, max: 4 },
+        radialPlacement: { minRadius: 0.12, maxRadius: 1.4 },
+        keepOutRadiusFromStructure: 0.48,
+        randomYawDeg: { min: 0, max: 360 },
+        randomScale: { min: 0.72, max: 0.944 },
+        tags: ["flowers", "foliage"],
+        removeOnStructureLevel: [1, 2]
+      },
+      {
+        asset: { id: "plains.grass.1", url: "/assets/plains/grass_1.gltf", textureUrl: PLAINS_PROP_TEXTURE_URL },
+        weight: 11,
+        quantity: { min: 2, max: 6 },
+        radialPlacement: { minRadius: 0.1, maxRadius: 1.45 },
+        keepOutRadiusFromStructure: 0.42,
+        randomYawDeg: { min: 0, max: 360 },
+        randomScale: { min: 0.76, max: 0.992 },
+        tags: ["grass", "foliage"],
+        removeOnStructureLevel: [1, 2]
+      }
+    ]
   },
   Desert: {
     maxInstancesPerTile: 8,
@@ -182,9 +228,43 @@ export const MAP_3D_BIOME_PROP_SETS: Record<BiomeName, BiomePropSet> = {
     ]
   },
   Mountains: {
-    // Pending artist delivery for mountain props.
-    maxInstancesPerTile: 0,
-    rules: []
+    // Large peak meshes stay sparse; smaller rocks can fill remaining slots.
+    maxInstancesPerTile: 3,
+    rules: [
+      {
+        asset: { id: "mountain.peak.1", url: "/assets/mountain/mountain_1.gltf", textureUrl: MOUNTAIN_PROP_TEXTURE_URL },
+        weight: 6,
+        quantity: { min: 1, max: 1 },
+        radialPlacement: { minRadius: 0.2, maxRadius: 0.52 },
+        keepOutRadiusFromStructure: 0.1,
+        randomYawDeg: { min: 0, max: 360 },
+        randomScale: { min: 0.5, max: 0.72 },
+        tags: ["mountain", "peak", "rock"],
+        removeOnStructureLevel: [1, 2]
+      },
+      {
+        asset: { id: "mountain.peak.2", url: "/assets/mountain/mountain_2.gltf", textureUrl: MOUNTAIN_PROP_TEXTURE_URL },
+        weight: 5,
+        quantity: { min: 0, max: 1 },
+        radialPlacement: { minRadius: 0.2, maxRadius: 0.55 },
+        keepOutRadiusFromStructure: 0.1,
+        randomYawDeg: { min: 0, max: 360 },
+        randomScale: { min: 0.45, max: 0.68 },
+        tags: ["mountain", "peak", "rock"],
+        removeOnStructureLevel: [1, 2]
+      },
+      {
+        asset: { id: "mountain.rocks.1", url: "/assets/mountain/mountain_rocks_1.gltf", textureUrl: MOUNTAIN_PROP_TEXTURE_URL },
+        weight: 8,
+        quantity: { min: 0, max: 2 },
+        radialPlacement: { minRadius: 0.25, maxRadius: 1.05 },
+        keepOutRadiusFromStructure: 0.2,
+        randomYawDeg: { min: 0, max: 360 },
+        randomScale: { min: 0.72, max: 1.02 },
+        tags: ["mountain", "rock"],
+        removeOnStructureLevel: [2]
+      }
+    ]
   }
 };
 
@@ -196,6 +276,12 @@ export type PropInstancePlan = {
   rotation: [number, number, number];
   scale: [number, number, number];
   tags: string[];
+};
+
+type PropPlacementFootprint = {
+  x: number;
+  z: number;
+  radius: number;
 };
 
 /**
@@ -212,6 +298,7 @@ export function generateTilePropPlan(
   if (!set) return [];
 
   const out: PropInstancePlan[] = [];
+  const placedFootprints: PropPlacementFootprint[] = [];
   let state = hash32(`${seed}:${tile.id}:${tile.biome}`);
 
   const next = () => {
@@ -227,26 +314,38 @@ export function generateTilePropPlan(
         continue;
       }
 
-      const radius = lerp(rule.radialPlacement.minRadius, rule.radialPlacement.maxRadius, next());
-      const angle = next() * Math.PI * 2;
-      const x = Math.cos(angle) * radius;
-      const z = Math.sin(angle) * radius;
+      const maxPlacementAttempts = 8;
+      for (let attempt = 0; attempt < maxPlacementAttempts; attempt += 1) {
+        const radius = lerp(rule.radialPlacement.minRadius, rule.radialPlacement.maxRadius, next());
+        const angle = next() * Math.PI * 2;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
 
-      if (rule.keepOutRadiusFromStructure && x * x + z * z < rule.keepOutRadiusFromStructure * rule.keepOutRadiusFromStructure) {
-        continue;
+        if (rule.keepOutRadiusFromStructure && x * x + z * z < rule.keepOutRadiusFromStructure * rule.keepOutRadiusFromStructure) {
+          continue;
+        }
+
+        const yawDeg = rule.randomYawDeg ? lerp(rule.randomYawDeg.min, rule.randomYawDeg.max, next()) : 0;
+        const s = rule.randomScale ? lerp(rule.randomScale.min, rule.randomScale.max, next()) : 1;
+        const collisionRadius = estimatePropCollisionRadius(rule, s);
+
+        if (hasPropCollision(placedFootprints, x, z, collisionRadius)) {
+          continue;
+        }
+
+        out.push({
+          assetId: rule.asset.id,
+          url: rule.asset.url,
+          textureUrl: rule.asset.textureUrl ?? (rule.asset.useSharedTexture ? MAP_3D_SHARED_PROP_TEXTURE.url : undefined),
+          position: [x, rule.yOffset ?? 0, z],
+          rotation: [0, (yawDeg * Math.PI) / 180, 0],
+          scale: [s, s, s],
+          tags: rule.tags ?? []
+        });
+
+        placedFootprints.push({ x, z, radius: collisionRadius });
+        break;
       }
-
-      const yawDeg = rule.randomYawDeg ? lerp(rule.randomYawDeg.min, rule.randomYawDeg.max, next()) : 0;
-      const s = rule.randomScale ? lerp(rule.randomScale.min, rule.randomScale.max, next()) : 1;
-      out.push({
-        assetId: rule.asset.id,
-        url: rule.asset.url,
-        textureUrl: rule.asset.textureUrl ?? (rule.asset.useSharedTexture ? MAP_3D_SHARED_PROP_TEXTURE.url : undefined),
-        position: [x, rule.yOffset ?? 0, z],
-        rotation: [0, (yawDeg * Math.PI) / 180, 0],
-        scale: [s, s, s],
-        tags: rule.tags ?? []
-      });
     }
   }
 
@@ -264,6 +363,34 @@ function randomInt(min: number, max: number, next: () => number) {
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
+}
+
+function estimatePropCollisionRadius(rule: Pick<PropSpawnRule, "asset" | "tags">, uniformScale: number) {
+  const tags = rule.tags ?? [];
+
+  let base = 0.2;
+  if (tags.includes("peak") || tags.includes("tree") || rule.asset.id.includes("mountain.peak")) {
+    base = 0.42;
+  } else if (tags.includes("rock") || tags.includes("cactus")) {
+    base = 0.3;
+  } else if (tags.includes("bush") || tags.includes("shrub")) {
+    base = 0.24;
+  }
+
+  return Math.max(0.12, base * uniformScale);
+}
+
+function hasPropCollision(footprints: PropPlacementFootprint[], x: number, z: number, radius: number) {
+  for (const footprint of footprints) {
+    const dx = footprint.x - x;
+    const dz = footprint.z - z;
+    const minDistance = footprint.radius + radius;
+    if (dx * dx + dz * dz < minDistance * minDistance) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function hash32(value: string) {
