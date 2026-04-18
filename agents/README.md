@@ -1,4 +1,4 @@
-# CryptoCatan agents
+# Equilibrium agents
 
 ## Layout
 

@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: "CryptoCatan"
+  - name: "Equilibrium"
     orgId: 1
-    folder: "CryptoCatan"
+    folder: "Equilibrium"
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30
