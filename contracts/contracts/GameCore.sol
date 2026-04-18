@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 
 import "./ActorAware.sol";
 import "./GameConfig.sol";
+import "./libraries/HexCoords.sol";
 import "./ILobbyManagerPrize.sol";
 import "./ILobbyManagerSync.sol";
 
@@ -182,6 +183,40 @@ contract GameCore is ActorAware {
         return string.concat(_intToString(q), ",", _intToString(r));
     }
 
+    function _requireHexIdMatchesCoords(string calldata hexId, int256 q, int256 r) internal pure {
+        require(keccak256(bytes(hexId)) == keccak256(bytes(_hexId(q, r))), "Hex id mismatch");
+    }
+
+    /// @dev Lazily allocates `hexes[key]` for valid in-map coordinates (no full-map bootstrap).
+    function _materializeHex(Lobby storage lobby, bytes32 key, int256 q, int256 r) internal {
+        require(_isWithinRadius(q, r, lobby.mapRadius), "Hex outside map");
+        Biome expectedBiome = _biomeAt(lobby.mapSeed, q, r);
+        if (!lobby.hexExists[key]) {
+            HexTile storage tile = lobby.hexes[key];
+            tile.q = q;
+            tile.r = r;
+            tile.biome = expectedBiome;
+            lobby.hexExists[key] = true;
+        } else {
+            HexTile storage tile = lobby.hexes[key];
+            require(tile.q == q && tile.r == r, "Hex mismatch");
+            require(tile.biome == expectedBiome, "Biome mismatch");
+        }
+    }
+
+    function _grantBiomeCollection(Player storage player, Biome biome, uint256 amount) internal {
+        if (biome == Biome.Plains) {
+            player.resources.food += amount;
+        } else if (biome == Biome.Forest) {
+            player.resources.wood += amount;
+        } else if (biome == Biome.Mountains) {
+            player.resources.stone += amount;
+        } else {
+            player.resources.ore += amount;
+        }
+        _clampBasicResources(player.resources);
+    }
+
     function _exploreCost(uint256 ownedCount) internal pure returns (Resources memory cost) {
         (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(ownedCount);
     }
@@ -206,24 +241,6 @@ contract GameCore is ActorAware {
         }
 
         return false;
-    }
-
-    function _initializeMap(Lobby storage lobby) internal {
-        int256 radius = int256(uint256(lobby.mapRadius));
-        for (int256 q = -radius; q <= radius; q++) {
-            int256 rMin = -radius > -q - radius ? -radius : -q - radius;
-            int256 rMax = radius < -q + radius ? radius : -q + radius;
-            for (int256 r = rMin; r <= rMax; r++) {
-                bytes32 key = keccak256(bytes(_hexId(q, r)));
-                if (!lobby.hexExists[key]) {
-                    HexTile storage tile = lobby.hexes[key];
-                    tile.q = q;
-                    tile.r = r;
-                    tile.biome = _biomeAt(lobby.mapSeed, q, r);
-                    lobby.hexExists[key] = true;
-                }
-            }
-        }
     }
 
     function _resolveMaturedProposals(uint256 lobbyId) internal {
@@ -492,7 +509,6 @@ contract GameCore is ActorAware {
         lobby.status = Status.Waiting;
         lobby.mapSeed = mapSeed;
         lobby.mapRadius = mapRadius;
-        _initializeMap(lobby);
         lobby.players.push(host);
         lobby.playerState[host] = _createPlayerState();
         lobbyCount += 1;
@@ -588,19 +604,10 @@ contract GameCore is ActorAware {
         address player = _actor();
         require(lobby.status == Status.ZeroRound, "Not zero round");
         require(!lobby.zeroRoundPicked[player], "Starting hex already chosen");
-        require(_isWithinRadius(q, r, lobby.mapRadius), "Hex outside map");
+        _requireHexIdMatchesCoords(hexId, q, r);
         bytes32 key = keccak256(bytes(hexId));
+        _materializeHex(lobby, key, q, r);
         HexTile storage tile = lobby.hexes[key];
-        Biome expectedBiome = _biomeAt(lobby.mapSeed, q, r);
-        if (!lobby.hexExists[key]) {
-            tile.q = q;
-            tile.r = r;
-            tile.biome = expectedBiome;
-            lobby.hexExists[key] = true;
-        } else {
-            require(tile.q == q && tile.r == r, "Hex mismatch");
-            require(tile.biome == expectedBiome, "Biome mismatch");
-        }
         require(tile.owner == address(0), "Hex already owned");
         tile.owner = player;
         tile.discovered = true;
@@ -622,14 +629,17 @@ contract GameCore is ActorAware {
         return lobby.players.length > 0;
     }
 
-    function discoverHex(uint256 lobbyId, string calldata hexId) external {
+    function discoverHex(uint256 lobbyId, string calldata hexId, int256 q, int256 r) external {
         _syncRoundFromTimestamp(lobbyId);
         Lobby storage lobby = lobbies[lobbyId];
         _requireNotEnded(lobby);
         address playerAddress = _actor();
         require(lobby.status == Status.Running, "Game not running");
 
-        HexTile storage tile = lobby.hexes[keccak256(bytes(hexId))];
+        _requireHexIdMatchesCoords(hexId, q, r);
+        bytes32 key = keccak256(bytes(hexId));
+        _materializeHex(lobby, key, q, r);
+        HexTile storage tile = lobby.hexes[key];
         Player storage player = lobby.playerState[playerAddress];
         require(player.exists && player.alive, "Player not active");
         require(tile.owner == address(0), "Hex occupied");
@@ -714,11 +724,7 @@ contract GameCore is ActorAware {
         player.resources.energy -= energyCost;
         uint256 amount = GameConfig.collectionResourceYield(tile.structure.level);
         string memory resourceKey = _resourceKeyForBiome(tile.biome);
-        if (keccak256(bytes(resourceKey)) == keccak256(bytes("food"))) player.resources.food += amount;
-        else if (keccak256(bytes(resourceKey)) == keccak256(bytes("wood"))) player.resources.wood += amount;
-        else if (keccak256(bytes(resourceKey)) == keccak256(bytes("stone"))) player.resources.stone += amount;
-        else if (keccak256(bytes(resourceKey)) == keccak256(bytes("ore"))) player.resources.ore += amount;
-        _clampBasicResources(player.resources);
+        _grantBiomeCollection(player, tile.biome, amount);
         emit ResourcesCollected(lobbyId, playerAddress, hexId, resourceKey, amount);
     }
 
@@ -1061,18 +1067,27 @@ contract GameCore is ActorAware {
         uint256 builtAtRound,
         uint256 collectedAtRound
     ) {
-        HexTile storage tile = lobbies[lobbyId].hexes[keccak256(bytes(hexId))];
-        return (
-            tile.q,
-            tile.r,
-            tile.biome,
-            tile.owner,
-            tile.discovered,
-            tile.structure.exists,
-            tile.structure.level,
-            tile.structure.builtAtRound,
-            tile.structure.collectedAtRound
-        );
+        Lobby storage lobby = lobbies[lobbyId];
+        bytes32 key = keccak256(bytes(hexId));
+        if (lobby.hexExists[key]) {
+            HexTile storage tile = lobby.hexes[key];
+            return (
+                tile.q,
+                tile.r,
+                tile.biome,
+                tile.owner,
+                tile.discovered,
+                tile.structure.exists,
+                tile.structure.level,
+                tile.structure.builtAtRound,
+                tile.structure.collectedAtRound
+            );
+        }
+        (bool parsed, int256 qv, int256 rv) = HexCoords.parseAxialHexId(hexId);
+        require(parsed, "Bad hex id");
+        require(_isWithinRadius(qv, rv, lobby.mapRadius), "Hex outside map");
+        biome = _biomeAt(lobby.mapSeed, qv, rv);
+        return (qv, rv, biome, address(0), false, false, 0, 0, 0);
     }
 
     function getLobbyPlayers(uint256 lobbyId) external view returns (address[] memory) {

@@ -7860,6 +7860,16 @@
               "internalType": "string",
               "name": "hexId",
               "type": "string"
+            },
+            {
+              "internalType": "int256",
+              "name": "q",
+              "type": "int256"
+            },
+            {
+              "internalType": "int256",
+              "name": "r",
+              "type": "int256"
             }
           ],
           "name": "discoverHex",

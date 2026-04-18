@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-17T21:48:57.884Z",
+  "deployedAt": "2026-04-17T23:36:57.200Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -1073,7 +1073,7 @@
       ]
     },
     "SimpleAccountFactory": {
-      "address": "0xF12b5dd4EAD5F743C6BaA640B0216200e89B60Da",
+      "address": "0x345cA3e014Aaf5dcA488057592ee47305D9B3e10",
       "abi": [
         {
           "inputs": [
@@ -1163,7 +1163,7 @@
       ]
     },
     "DirectActorAuthority": {
-      "address": "0x345cA3e014Aaf5dcA488057592ee47305D9B3e10",
+      "address": "0xf25186B5081Ff5cE73482AD761DB0eB0d25abfBF",
       "abi": [
         {
           "inputs": [
@@ -1192,7 +1192,7 @@
       ]
     },
     "SessionForwarderActorAuthority": {
-      "address": "0xf25186B5081Ff5cE73482AD761DB0eB0d25abfBF",
+      "address": "0x8f0483125FCb9aaAEFA9209D8E9d7b9C8B9Fb90F",
       "abi": [
         {
           "inputs": [],
@@ -1666,7 +1666,7 @@
       ]
     },
     "LobbyPaymasterHook": {
-      "address": "0x8f0483125FCb9aaAEFA9209D8E9d7b9C8B9Fb90F",
+      "address": "0x9FBDa871d559710256a2502A2517b794B482Db40",
       "abi": [
         {
           "inputs": [
@@ -2061,7 +2061,7 @@
       ]
     },
     "LobbySessionPaymaster": {
-      "address": "0x9FBDa871d559710256a2502A2517b794B482Db40",
+      "address": "0x2C2B9C9a4a25e24B174f26114e8926a9f2128FE4",
       "abi": [
         {
           "inputs": [
@@ -2405,7 +2405,7 @@
       ]
     },
     "LobbyManager": {
-      "address": "0x2C2B9C9a4a25e24B174f26114e8926a9f2128FE4",
+      "address": "0x30753E4A8aad7F8597332E813735Def5dD395028",
       "abi": [
         {
           "inputs": [
@@ -3715,7 +3715,7 @@
       ]
     },
     "Ticket": {
-      "address": "0x30753E4A8aad7F8597332E813735Def5dD395028",
+      "address": "0xFB88dE099e13c3ED21F80a7a1E49f8CAEcF10df6",
       "abi": [
         {
           "inputs": [],
@@ -4387,7 +4387,7 @@
       ]
     },
     "Season": {
-      "address": "0xFB88dE099e13c3ED21F80a7a1E49f8CAEcF10df6",
+      "address": "0xAa588d3737B611baFD7bD713445b314BD453a5C8",
       "abi": [
         {
           "inputs": [],
@@ -4556,7 +4556,7 @@
       ]
     },
     "PlayerState": {
-      "address": "0xAa588d3737B611baFD7bD713445b314BD453a5C8",
+      "address": "0xf204a4Ef082f5c04bB89F7D5E6568B796096735a",
       "abi": [
         {
           "inputs": [],
@@ -4805,7 +4805,7 @@
       ]
     },
     "Structures": {
-      "address": "0xf204a4Ef082f5c04bB89F7D5E6568B796096735a",
+      "address": "0x75c35C980C0d37ef46DF04d31A140b65503c0eEd",
       "abi": [
         {
           "inputs": [],
@@ -5035,7 +5035,7 @@
       ]
     },
     "Voting": {
-      "address": "0x75c35C980C0d37ef46DF04d31A140b65503c0eEd",
+      "address": "0x82D50AD3C1091866E258Fd0f1a7cC9674609D254",
       "abi": [
         {
           "inputs": [],
@@ -5411,7 +5411,7 @@
       ]
     },
     "AIGameMaster": {
-      "address": "0x82D50AD3C1091866E258Fd0f1a7cC9674609D254",
+      "address": "0xdDA6327139485221633A1FcD65f4aC932E60A2e1",
       "abi": [
         {
           "inputs": [],
@@ -5886,7 +5886,7 @@
       ]
     },
     "ERC8004PlayerAgentRegistry": {
-      "address": "0xdDA6327139485221633A1FcD65f4aC932E60A2e1",
+      "address": "0xeec918d74c746167564401103096D45BbD494B74",
       "abi": [
         {
           "inputs": [],
@@ -6406,7 +6406,7 @@
       ]
     },
     "MockERC8004Agent": {
-      "address": "0xeec918d74c746167564401103096D45BbD494B74",
+      "address": "0x0d8cc4b8d15D4c3eF1d70af0071376fb26B5669b",
       "abi": [
         {
           "inputs": [],
@@ -6640,7 +6640,7 @@
       ]
     },
     "ERC8004AIGameMasterAdapter": {
-      "address": "0x0d8cc4b8d15D4c3eF1d70af0071376fb26B5669b",
+      "address": "0xEcFcaB0A285d3380E488A39B4BB21e777f8A4EaC",
       "abi": [
         {
           "inputs": [
@@ -6929,7 +6929,7 @@
       ]
     },
     "GameCore": {
-      "address": "0xEcFcaB0A285d3380E488A39B4BB21e777f8A4EaC",
+      "address": "0x38cF23C52Bb4B13F051Aec09580a2dE845a7FA35",
       "abi": [
         {
           "inputs": [
@@ -7903,6 +7903,16 @@
               "internalType": "string",
               "name": "hexId",
               "type": "string"
+            },
+            {
+              "internalType": "int256",
+              "name": "q",
+              "type": "int256"
+            },
+            {
+              "internalType": "int256",
+              "name": "r",
+              "type": "int256"
             }
           ],
           "name": "discoverHex",
