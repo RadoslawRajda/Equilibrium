@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-18T07:19:38.071Z",
+  "deployedAt": "2026-04-18T10:32:30.501Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -8016,7 +8016,7 @@
                 }
               ],
               "internalType": "struct GameCore.Resources",
-              "name": "",
+              "name": "cost",
               "type": "tuple"
             }
           ],
@@ -8553,7 +8553,7 @@
                 }
               ],
               "internalType": "struct GameCore.Resources",
-              "name": "",
+              "name": "cost",
               "type": "tuple"
             }
           ],
@@ -8812,7 +8812,7 @@
                 }
               ],
               "internalType": "struct GameCore.Resources",
-              "name": "",
+              "name": "cost",
               "type": "tuple"
             }
           ],
