@@ -39,8 +39,8 @@ type HexContextMenuActions = {
 const biomeStyle: Record<string, { base: string; edge: string; glow: string; resource: string }> = {
   Plains: { base: "#b9db6f", edge: "#ffd369", glow: "#ecffb0", resource: "food" },
   Forest: { base: "#4cbc79", edge: "#5bff9d", glow: "#9fffc8", resource: "wood" },
-  Mountains: { base: "#5f84cf", edge: "#9cc4ff", glow: "#d1e4ff", resource: "stone/ore" },
-  Desert: { base: "#e49b55", edge: "#ffad69", glow: "#ffd8b0", resource: "energy" }
+  Mountains: { base: "#5f84cf", edge: "#9cc4ff", glow: "#d1e4ff", resource: "stone" },
+  Desert: { base: "#e49b55", edge: "#ffad69", glow: "#ffd8b0", resource: "ore" }
 };
 
 const HEX_RADIUS = 1.9;

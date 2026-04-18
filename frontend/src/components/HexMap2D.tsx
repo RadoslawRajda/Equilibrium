@@ -34,8 +34,8 @@ type HexContextMenuActions = {
 const biomeStyle: Record<string, { fill: string; stroke: string; resource: string }> = {
   Plains: { fill: "url(#plainsGradient)", stroke: "#ffd369", resource: "food" },
   Forest: { fill: "url(#forestGradient)", stroke: "#5bff9d", resource: "wood" },
-  Mountains: { fill: "url(#mountainGradient)", stroke: "#9cc4ff", resource: "stone/ore" },
-  Desert: { fill: "url(#desertGradient)", stroke: "#ffad69", resource: "energy" }
+  Mountains: { fill: "url(#mountainGradient)", stroke: "#9cc4ff", resource: "stone" },
+  Desert: { fill: "url(#desertGradient)", stroke: "#ffad69", resource: "ore" }
 };
 
 export function HexMap2D({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [], contextMenuActions }: Props) {
