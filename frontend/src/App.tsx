@@ -1639,6 +1639,7 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:create") {
+        setPendingAction(event);
         const effectKey =
           payload.effect?.special === "__END_ROUND__"
             ? "__END_ROUND__"
@@ -2421,10 +2422,25 @@ function AppPage() {
                   <button 
                     type="button"
                     style={{ width: '100%' }}
-                    onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })}
-                    disabled={activeLobby.status !== "running"}
+                    onClick={async () => {
+                      try {
+                        setMapErrorMessage("");
+                        setMapErrorPhase("hidden");
+                        await action("vote:create", {
+                          lobbyId: activeLobby.id,
+                          by: address,
+                          title: "End round early", 
+                          effect: { special: "__END_ROUND__" }
+                        }, true);
+                      } catch (err: any) {
+                        setError(mapGameError(err));
+                        setMapErrorMessage(mapGameError(err));
+                        setMapErrorPhase("visible");
+                      }
+                    }}
+                    disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
                   >
-                    Propose end round
+                    {pendingAction === "vote:create" ? "Proposing..." : "Propose end round"}
                   </button>
                 </>
               ) : (
@@ -2556,10 +2572,25 @@ function AppPage() {
               <button 
                 type="button"
                 style={{ width: '100%' }}
-                onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })} 
-                disabled={activeLobby.status !== "running"}
+                onClick={async () => {
+                  try {
+                    setMapErrorMessage("");
+                    setMapErrorPhase("hidden");
+                    await action("vote:create", {
+                      lobbyId: activeLobby.id,
+                      by: address,
+                      title: "End round early", 
+                      effect: { special: "__END_ROUND__" }
+                    }, true);
+                  } catch (err: any) {
+                    setError(mapGameError(err));
+                    setMapErrorMessage(mapGameError(err));
+                    setMapErrorPhase("visible");
+                  }
+                }}
+                disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
               >
-                Propose end round
+                {pendingAction === "vote:create" ? "Proposing..." : "Propose end round"}
               </button>
             )}
 
