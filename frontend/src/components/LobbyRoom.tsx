@@ -155,8 +155,7 @@ export function LobbyRoom({
         <div>
           <h1>{lobby.name}</h1>
           <p>
-            Lobby #{lobby.id} • {lobby.status} • {lobby.players.length} players • prize pool{" "}
-            {lobby.prizePool ? `${lobby.prizePool} ETH` : "0 ETH"}
+            Lobby #{lobby.id} • {lobby.status} • {lobby.players.length} players
           </p>
         </div>
       </header>
@@ -206,8 +205,8 @@ export function LobbyRoom({
 
       {hasTicket && !isHost ? (
         <p className="selected-text" style={{ maxWidth: "42rem", marginTop: "0.5rem" }}>
-          Exit refunds your share of the pool held on this contract (then Claim ETH). Funds already on the EntryPoint for AA gas
-          are not pulled back here.
+          Leaving refunds your share of sponsor funds still on this contract (then use Claim ETH). Deposits already on the
+          EntryPoint for AA gas are not pulled back here.
         </p>
       ) : null}
 

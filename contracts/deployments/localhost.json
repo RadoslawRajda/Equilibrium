@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-17T23:36:57.200Z",
+  "deployedAt": "2026-04-18T07:53:10.329Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -2706,56 +2706,6 @@
             {
               "indexed": true,
               "internalType": "address",
-              "name": "winner",
-              "type": "address"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            }
-          ],
-          "name": "PrizeWithdrawn",
-          "type": "event"
-        },
-        {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "indexed": true,
-              "internalType": "address",
-              "name": "sessionKey",
-              "type": "address"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            }
-          ],
-          "name": "SessionEntryPointFunded",
-          "type": "event"
-        },
-        {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "indexed": true,
-              "internalType": "address",
               "name": "actor",
               "type": "address"
             },
@@ -2856,11 +2806,11 @@
             {
               "indexed": false,
               "internalType": "uint256",
-              "name": "amount",
+              "name": "weiTotal",
               "type": "uint256"
             }
           ],
-          "name": "SessionSponsorPoolReserved",
+          "name": "SessionSponsorRefunded",
           "type": "event"
         },
         {
@@ -2898,19 +2848,6 @@
         {
           "inputs": [],
           "name": "MIN_PLAYERS",
-          "outputs": [
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [],
-          "name": "SESSION_SPONSOR_SHARE_BPS",
           "outputs": [
             {
               "internalType": "uint256",
@@ -3139,6 +3076,19 @@
             }
           ],
           "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "_lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "distributeSessionSponsorRemainder",
+          "outputs": [],
+          "stateMutability": "nonpayable",
           "type": "function"
         },
         {
@@ -3463,7 +3413,7 @@
               "type": "address"
             }
           ],
-          "name": "notifyGameWinner",
+          "name": "notifyGameSettled",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -3516,24 +3466,6 @@
         {
           "inputs": [],
           "name": "renounceOwnership",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "_lobbyId",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            }
-          ],
-          "name": "reserveSessionSponsorPool",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -8084,7 +8016,7 @@
                 }
               ],
               "internalType": "struct GameCore.Resources",
-              "name": "",
+              "name": "cost",
               "type": "tuple"
             }
           ],
@@ -8621,7 +8553,7 @@
                 }
               ],
               "internalType": "struct GameCore.Resources",
-              "name": "",
+              "name": "cost",
               "type": "tuple"
             }
           ],
@@ -8880,7 +8812,7 @@
                 }
               ],
               "internalType": "struct GameCore.Resources",
-              "name": "",
+              "name": "cost",
               "type": "tuple"
             }
           ],

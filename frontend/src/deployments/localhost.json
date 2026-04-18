@@ -2656,6 +2656,31 @@
             {
               "indexed": true,
               "internalType": "address",
+              "name": "kicked",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "creditedWei",
+              "type": "uint256"
+            }
+          ],
+          "name": "PlayerKickedOpenLobby",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
               "name": "player",
               "type": "address"
             },
@@ -2667,56 +2692,6 @@
             }
           ],
           "name": "PlayerLeftOpenLobby",
-          "type": "event"
-        },
-        {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "indexed": true,
-              "internalType": "address",
-              "name": "winner",
-              "type": "address"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            }
-          ],
-          "name": "PrizeWithdrawn",
-          "type": "event"
-        },
-        {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "indexed": true,
-              "internalType": "address",
-              "name": "sessionKey",
-              "type": "address"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            }
-          ],
-          "name": "SessionEntryPointFunded",
           "type": "event"
         },
         {
@@ -2831,11 +2806,11 @@
             {
               "indexed": false,
               "internalType": "uint256",
-              "name": "amount",
+              "name": "weiTotal",
               "type": "uint256"
             }
           ],
-          "name": "SessionSponsorPoolReserved",
+          "name": "SessionSponsorRefunded",
           "type": "event"
         },
         {
@@ -2873,19 +2848,6 @@
         {
           "inputs": [],
           "name": "MIN_PLAYERS",
-          "outputs": [
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [],
-          "name": "SESSION_SPONSOR_SHARE_BPS",
           "outputs": [
             {
               "internalType": "uint256",
@@ -3117,6 +3079,19 @@
           "type": "function"
         },
         {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "_lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "distributeSessionSponsorRemainder",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
           "inputs": [],
           "name": "entryPoint",
           "outputs": [
@@ -3294,6 +3269,24 @@
           "inputs": [
             {
               "internalType": "uint256",
+              "name": "_lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "kicked",
+              "type": "address"
+            }
+          ],
+          "name": "hostKickOpenLobbyPlayer",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
               "name": "lobbyId",
               "type": "uint256"
             },
@@ -3420,7 +3413,7 @@
               "type": "address"
             }
           ],
-          "name": "notifyGameWinner",
+          "name": "notifyGameSettled",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -3473,24 +3466,6 @@
         {
           "inputs": [],
           "name": "renounceOwnership",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "_lobbyId",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            }
-          ],
-          "name": "reserveSessionSponsorPool",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
@@ -7989,6 +7964,19 @@
             {
               "internalType": "uint256",
               "name": "receiveAmount",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "pure",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "getBasicResourceMax",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
               "type": "uint256"
             }
           ],

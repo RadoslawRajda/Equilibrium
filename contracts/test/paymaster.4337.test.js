@@ -1,14 +1,10 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { TICKET_PRICE } = require("./gameplay.config.js");
 
-/**
- * Policy cap on cumulative sponsorship (wei) matching LobbyManager + createLobbyWithSession / buyTicketWithSession
- * when maxSponsoredWei is 0 (contract uses 20% of ticket price).
- */
+/** Policy cap when maxSponsoredWei is 0 — full ticket price (LobbyManager). */
 async function sessionPolicyMaxWei(lobbyManager) {
-  const tp = await lobbyManager.TICKET_PRICE();
-  const bps = await lobbyManager.SESSION_SPONSOR_SHARE_BPS();
-  return (tp * bps) / 10000n;
+  return await lobbyManager.TICKET_PRICE();
 }
 
 /**
@@ -57,8 +53,7 @@ describe("ERC-4337 paymaster stack", function () {
     it("allows preview when policy is active and under cap", async function () {
       const { hook, host, relayer, lobbyManager, owner } = await deployHookStack();
 
-      await lobbyManager.connect(host).createLobby("PM Test", { value: ethers.parseEther("5") });
-      await lobbyManager.connect(host).reserveSessionSponsorPool(1, ethers.parseEther("0.02"));
+      await lobbyManager.connect(host).createLobby("PM Test", { value: TICKET_PRICE });
 
       const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 7200);
       const sf = await ethers.getContractAt("SessionForwarderActorAuthority", await hook.sessionAuthority());
@@ -72,8 +67,7 @@ describe("ERC-4337 paymaster stack", function () {
     it("rejects preview when requested amount exceeds remaining sponsorship budget", async function () {
       const { hook, host, relayer, lobbyManager, owner } = await deployHookStack();
 
-      await lobbyManager.connect(host).createLobby("PM Cap", { value: ethers.parseEther("5") });
-      await lobbyManager.connect(host).reserveSessionSponsorPool(1, ethers.parseEther("0.02"));
+      await lobbyManager.connect(host).createLobby("PM Cap", { value: TICKET_PRICE });
 
       const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 7200);
       const sfAddr = await hook.sessionAuthority();
@@ -87,8 +81,7 @@ describe("ERC-4337 paymaster stack", function () {
     it("only EntryPoint may call sponsorUserOperation", async function () {
       const { hook, host, relayer, lobbyManager, entryPointSigner, sessionForwarder, owner } = await deployHookStack();
 
-      await lobbyManager.connect(host).createLobby("EP gate", { value: ethers.parseEther("5") });
-      await lobbyManager.connect(host).reserveSessionSponsorPool(1, ethers.parseEther("0.02"));
+      await lobbyManager.connect(host).createLobby("EP gate", { value: TICKET_PRICE });
 
       const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 7200);
       const sf = await ethers.getContractAt("SessionForwarderActorAuthority", await hook.sessionAuthority());
@@ -174,13 +167,13 @@ describe("ERC-4337 paymaster stack", function () {
   });
 
   describe("Sponsorship limit vs transaction count (simulation)", function () {
-    it("derives policy cap from LobbyManager (20% of ticket) and estimates tx count at average cost", async function () {
+    it("derives policy cap from LobbyManager (full ticket) and estimates tx count at average cost", async function () {
       const LobbyManager = await ethers.getContractFactory("LobbyManager");
       const lm = await LobbyManager.deploy();
       await lm.waitForDeployment();
 
       const policyMax = await sessionPolicyMaxWei(lm);
-      expect(policyMax).to.equal(ethers.parseEther("1"));
+      expect(policyMax).to.equal(TICKET_PRICE);
 
       const avgLow = ethers.parseEther("0.0004");
       const avgMid = ethers.parseEther("0.002");
@@ -194,14 +187,12 @@ describe("ERC-4337 paymaster stack", function () {
     it("simulates sequential sponsorUserOperation until Session sponsor limit exceeded", async function () {
       const { hook, host, relayer, lobbyManager, entryPointSigner, sessionForwarder, owner } = await deployHookStack();
 
-      await lobbyManager.connect(host).createLobby("Tx sim", { value: ethers.parseEther("5") });
+      await lobbyManager.connect(host).createLobby("Tx sim", { value: TICKET_PRICE });
 
       const policyMax = await sessionPolicyMaxWei(lobbyManager);
       const costPerTx = ethers.parseEther("0.1");
       const expectedOk = txCountAtAvgCostWei(policyMax, costPerTx);
       expect(expectedOk).to.equal(10n);
-
-      await lobbyManager.connect(host).reserveSessionSponsorPool(1, policyMax);
 
       const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 7200);
       const sf = await ethers.getContractAt("SessionForwarderActorAuthority", await hook.sessionAuthority());
@@ -227,9 +218,8 @@ describe("ERC-4337 paymaster stack", function () {
     it("previewSponsorship matches remaining budget after partial spend (same model as paymaster validate)", async function () {
       const { hook, host, relayer, lobbyManager, entryPointSigner, sessionForwarder, owner } = await deployHookStack();
 
-      await lobbyManager.connect(host).createLobby("Preview sim", { value: ethers.parseEther("5") });
+      await lobbyManager.connect(host).createLobby("Preview sim", { value: TICKET_PRICE });
       const policyMax = await sessionPolicyMaxWei(lobbyManager);
-      await lobbyManager.connect(host).reserveSessionSponsorPool(1, policyMax);
 
       const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 7200);
       const sf = await ethers.getContractAt("SessionForwarderActorAuthority", await hook.sessionAuthority());
@@ -257,8 +247,7 @@ describe("ERC-4337 paymaster stack", function () {
     it("tracks cumulative sponsored wei per session key", async function () {
       const { hook, host, relayer, lobbyManager, entryPointSigner, sessionForwarder, owner } = await deployHookStack();
 
-      await lobbyManager.connect(host).createLobby("Acc", { value: ethers.parseEther("5") });
-      await lobbyManager.connect(host).reserveSessionSponsorPool(1, ethers.parseEther("0.02"));
+      await lobbyManager.connect(host).createLobby("Acc", { value: TICKET_PRICE });
 
       const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 7200);
       const sf = await ethers.getContractAt("SessionForwarderActorAuthority", await hook.sessionAuthority());

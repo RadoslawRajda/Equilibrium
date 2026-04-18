@@ -3,11 +3,13 @@ import { formatEther } from "viem";
 
 /** LobbyManager.LobbyStatus */
 const LM_COMPLETED = 2;
+const LM_CANCELLED = 3;
 
-const winAnnounced = new Set<string>();
+const withdrawAnnounced = new Set<string>();
 
 /**
- * When LobbyManager marks the lobby completed and we are the winner, log once and pull `playerBalance` via `withdraw()`.
+ * After a lobby is COMPLETED or CANCELLED, call `distributeSessionSponsorRemainder` if the sponsor pool is non-zero,
+ * then pull `playerBalance` to the wallet with `withdraw()`.
  */
 export async function claimLobbyRewardsIfWinner(
   walletClient: WalletClient,
@@ -30,18 +32,31 @@ export async function claimLobbyRewardsIfWinner(
     Array.isArray(g) ? g[i] : (g as Record<string, unknown>)[name];
 
   const status = Number(at(3, "status") ?? 0);
-  const prizePoolWei = BigInt(String(at(4, "prizePool") ?? 0));
-  const winner = at(6, "winner") as Address;
-
-  if (status !== LM_COMPLETED || winner.toLowerCase() !== account.toLowerCase()) {
+  if (status !== LM_COMPLETED && status !== LM_CANCELLED) {
     return;
   }
 
-  if (!winAnnounced.has(lobbyIdStr)) {
-    winAnnounced.add(lobbyIdStr);
-    console.log(
-      `[player-agent] WON lobby ${lobbyIdStr}! Prize pool credited: ${formatEther(prizePoolWei)} ETH (LobbyManager → playerBalance)`
-    );
+  const pool = (await publicClient.readContract({
+    address: lobbyManager,
+    abi: lobbyManagerAbi,
+    functionName: "sessionSponsorPool",
+    args: [lobbyId]
+  })) as bigint;
+
+  if (pool > 0n) {
+    try {
+      const distHash = await walletClient.writeContract({
+        address: lobbyManager,
+        abi: lobbyManagerAbi,
+        functionName: "distributeSessionSponsorRemainder",
+        args: [lobbyId],
+        chain,
+        account
+      } as never);
+      await publicClient.waitForTransactionReceipt({ hash: distHash });
+    } catch (e) {
+      console.warn("[player-agent] distributeSessionSponsorRemainder failed", e);
+    }
   }
 
   const bal = (await publicClient.readContract({
@@ -52,6 +67,14 @@ export async function claimLobbyRewardsIfWinner(
   })) as bigint;
 
   if (bal === 0n) return;
+
+  const key = `${lobbyIdStr}:${account.toLowerCase()}`;
+  if (!withdrawAnnounced.has(key)) {
+    withdrawAnnounced.add(key);
+    console.log(
+      `[player-agent] Lobby ${lobbyIdStr} settled — claiming ${formatEther(bal)} ETH (your share on LobbyManager)`
+    );
+  }
 
   try {
     const hash = await walletClient.writeContract({

@@ -7,7 +7,7 @@ module.exports = {
       evmVersion: "cancun",
       optimizer: {
         enabled: true,
-        runs: 200
+        runs: 80
       },
       viaIR: true
     }

@@ -97,7 +97,7 @@ export function Lobby({
           <motion.div key={lobby.id} className="lobby-card" whileHover={{ y: -4 }}>
             <div>
               <h3>{lobby.name}</h3>
-              <p>{lobby.playerCount} players • {lobby.status} • prize pool {lobby.prizePool ?? "0"} ETH</p>
+              <p>{lobby.playerCount} players • {lobby.status}</p>
             </div>
             <button onClick={() => onOpen(lobby.id)}>Open</button>
           </motion.div>

@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const { ethers, network } = require("hardhat");
 const { TICKET_PRICE, DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS, ZERO_ROUND_SECONDS, ROUND_SECONDS } = require("./gameplay.config.js");
 const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
+const { asResourceTuple } = require("./helpers/resourceTuple.js");
 
 async function deploySystem() {
   const [deployer, host, player1, player2, player3, outsider] = await ethers.getSigners();
@@ -69,7 +70,7 @@ describe("Multiplayer GameCore", function () {
 
     for (const addr of [host.address, player1.address]) {
       expect(await gameCore.isPlayerAlive(1, addr)).to.equal(true);
-      const res = await gameCore.getPlayerResources(1, addr);
+      const res = asResourceTuple(await gameCore.getPlayerResources(1, addr));
       expect(res[0]).to.equal(2n);
       expect(res[1]).to.equal(2n);
       expect(res[2]).to.equal(2n);

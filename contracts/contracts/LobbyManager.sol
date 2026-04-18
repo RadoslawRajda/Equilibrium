@@ -3,10 +3,6 @@ pragma solidity ^0.8.28;
 
 import "./ActorAware.sol";
 
-interface IEntryPointDeposits {
-    function depositTo(address account) external payable;
-}
-
 interface IAgentStatsRegistry {
     function recordLobbyResult(uint256 lobbyId, address[] calldata players, address winner) external;
 }
@@ -16,9 +12,7 @@ interface IRegisteredAgentLookup {
 }
 
 contract LobbyManager is ActorAware {
-    uint256 public constant TICKET_PRICE = 5 ether;
-    /// @notice Share of each ticket (basis points) carved out for AA: half to EntryPoint deposit on session account, half to sessionSponsorPool for paymaster reimbursements.
-    uint256 public constant SESSION_SPONSOR_SHARE_BPS = 2000;
+    uint256 public constant TICKET_PRICE = 1 ether;
     uint256 public constant MIN_PLAYERS = 1;
     uint256 public constant MAX_PLAYERS = 8;
 
@@ -48,10 +42,10 @@ contract LobbyManager is ActorAware {
     address public sessionSponsorManager;
     address public sessionPolicyRegistry;
     address public entryPoint;
-    uint128 public defaultSessionMaxSponsoredWei = uint128((uint256(TICKET_PRICE) * SESSION_SPONSOR_SHARE_BPS) / 10000);
+    uint128 public defaultSessionMaxSponsoredWei = uint128(TICKET_PRICE);
     uint64 public defaultSessionTtlSeconds = 7 days;
 
-    /// @dev Set once after GameCore deployment; only that contract may call `notifyGameWinner`.
+    /// @dev Set once after GameCore deployment; only that contract may call `notifyGameSettled`.
     address public gameCore;
     address public agentStatsRegistry;
 
@@ -62,13 +56,11 @@ contract LobbyManager is ActorAware {
     event LobbyCancelled(uint256 indexed lobbyId);
     event PlayerLeftOpenLobby(uint256 indexed lobbyId, address indexed player, uint256 creditedWei);
     event PlayerKickedOpenLobby(uint256 indexed lobbyId, address indexed kicked, uint256 creditedWei);
-    event PrizeWithdrawn(uint256 indexed lobbyId, address indexed winner, uint256 amount);
     event SessionSponsorManagerUpdated(address indexed previousManager, address indexed newManager);
     event SessionPolicyRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
     event EntryPointUpdated(address indexed previousEntryPoint, address indexed newEntryPoint);
-    event SessionSponsorPoolReserved(uint256 indexed lobbyId, uint256 amount);
     event SessionSponsorPoolConsumed(uint256 indexed lobbyId, uint256 amount, address indexed receiver);
-    event SessionEntryPointFunded(uint256 indexed lobbyId, address indexed sessionKey, uint256 amount);
+    event SessionSponsorRefunded(uint256 indexed lobbyId, uint256 weiTotal);
     event SessionPolicyProvisioned(
         uint256 indexed lobbyId,
         address indexed actor,
@@ -114,34 +106,46 @@ contract LobbyManager is ActorAware {
         sessionSponsorManager = newManager;
     }
 
-    function reserveSessionSponsorPool(uint256 _lobbyId, uint256 amount) external {
-        Lobby storage lobby = lobbies[_lobbyId];
-        address player = _actor();
-        require(player == lobby.host, "Only host can reserve sponsor pool");
-        require(lobby.status == LobbyStatus.OPEN || lobby.status == LobbyStatus.ACTIVE, "Lobby not sponsorable");
-        require(amount <= lobby.prizePool, "Insufficient lobby pool");
-
-        lobby.prizePool -= amount;
-        sessionSponsorPool[_lobbyId] += amount;
-
-        emit SessionSponsorPoolReserved(_lobbyId, amount);
-    }
-
+    /// @notice Pulls up to `amount` wei from the lobby sponsor pool (never reverts for "too little" — used after UserOp `execute` when `postOp` still needs reimbursement).
     function consumeSessionSponsorPool(uint256 _lobbyId, uint256 amount, address payable receiver) external {
         require(msg.sender == sessionSponsorManager, "Only session sponsor manager");
-        require(amount <= sessionSponsorPool[_lobbyId], "Insufficient session sponsor pool");
-
-        sessionSponsorPool[_lobbyId] -= amount;
-        (bool success, ) = receiver.call{value: amount}("");
+        if (amount == 0) {
+            return;
+        }
+        uint256 bal = sessionSponsorPool[_lobbyId];
+        if (bal == 0) {
+            return;
+        }
+        uint256 take = amount <= bal ? amount : bal;
+        sessionSponsorPool[_lobbyId] = bal - take;
+        (bool success, ) = receiver.call{value: take}("");
         require(success, "Session sponsor transfer failed");
 
-        emit SessionSponsorPoolConsumed(_lobbyId, amount, receiver);
+        emit SessionSponsorPoolConsumed(_lobbyId, take, receiver);
     }
 
-    /// @return totalWei 20% of ticket (SESSION_SPONSOR_SHARE_BPS / 10000 * TICKET_PRICE); perBranchWei half for EP, half for sponsor pool
-    function _sessionSponsorAmounts() internal pure returns (uint256 totalWei, uint256 perBranchWei) {
-        totalWei = (TICKET_PRICE * SESSION_SPONSOR_SHARE_BPS) / 10000;
-        perBranchWei = totalWei / 2;
+    /// @notice Full ticket is credited to `sessionSponsorPool` so cancel/leave/refunds return everything still on this contract (gas is only tx fees). AA / paymaster pulls from this pool; no ticket ETH is sent to EntryPoint here.
+    function _routeTicketToSponsors(uint256 lobbyId, address /* sessionKey */) internal {
+        sessionSponsorPool[lobbyId] += TICKET_PRICE;
+    }
+
+    /// @dev Splits remaining `sessionSponsorPool` equally across current `lobby.players` into `playerBalance` for `withdraw()`.
+    function _splitSessionSponsorToPlayerBalances(uint256 _lobbyId) internal {
+        Lobby storage lobby = lobbies[_lobbyId];
+        uint256 sponsor = sessionSponsorPool[_lobbyId];
+        if (sponsor == 0) {
+            return;
+        }
+        sessionSponsorPool[_lobbyId] = 0;
+        uint256 n = lobby.players.length;
+        require(n > 0, "No players");
+        uint256 per = sponsor / n;
+        uint256 rem = sponsor % n;
+        for (uint256 i = 0; i < n; i++) {
+            uint256 extra = i < rem ? 1 : 0;
+            playerBalance[lobby.players[i]] += per + extra;
+        }
+        emit SessionSponsorRefunded(_lobbyId, sponsor);
     }
 
     // Tworzenie lobby: właściciel od razu kupuje bilet
@@ -149,7 +153,9 @@ contract LobbyManager is ActorAware {
         require(msg.value == TICKET_PRICE, "Must send exact ticket price");
         address player = _actor();
 
-        return _createLobbyInternal(_name, player);
+        uint256 lobbyId = _createLobbyInternal(_name, player);
+        _routeTicketToSponsors(lobbyId, address(0));
+        return lobbyId;
     }
 
     function createLobbyWithSession(
@@ -162,13 +168,9 @@ contract LobbyManager is ActorAware {
         address player = _actor();
 
         uint256 lobbyId = _createLobbyInternal(_name, player);
-        (uint256 sponsorTotal, uint256 perBranch) = _sessionSponsorAmounts();
-        if (sponsorTotal > 0 && perBranch > 0) {
-            _fundSessionEntryPoint(lobbyId, sessionKey, perBranch);
-            _mirrorSessionSponsorPool(lobbyId, perBranch);
-        }
+        _routeTicketToSponsors(lobbyId, sessionKey);
 
-        uint128 policyMax = maxSponsoredWei == 0 ? uint128(sponsorTotal) : maxSponsoredWei;
+        uint128 policyMax = maxSponsoredWei == 0 ? uint128(TICKET_PRICE) : maxSponsoredWei;
         _provisionSessionPolicy(
             lobbyId,
             player,
@@ -189,7 +191,7 @@ contract LobbyManager is ActorAware {
         lobby.name = _name;
         lobby.createdAt = block.timestamp;
         lobby.status = LobbyStatus.OPEN;
-        lobby.prizePool = TICKET_PRICE;
+        lobby.prizePool = 0;
 
         // Właściciel dostaje bilet automatycznie
         lobby.players.push(player);
@@ -205,6 +207,7 @@ contract LobbyManager is ActorAware {
         address player = _actor();
 
         _buyTicketInternal(_lobbyId, player);
+        _routeTicketToSponsors(_lobbyId, address(0));
     }
 
     function buyTicketWithSession(
@@ -217,13 +220,9 @@ contract LobbyManager is ActorAware {
         address player = _actor();
 
         _buyTicketInternal(_lobbyId, player);
-        (uint256 sponsorTotal, uint256 perBranch) = _sessionSponsorAmounts();
-        if (sponsorTotal > 0 && perBranch > 0) {
-            _fundSessionEntryPoint(_lobbyId, sessionKey, perBranch);
-            _mirrorSessionSponsorPool(_lobbyId, perBranch);
-        }
+        _routeTicketToSponsors(_lobbyId, sessionKey);
 
-        uint128 policyMax = maxSponsoredWei == 0 ? uint128(sponsorTotal) : maxSponsoredWei;
+        uint128 policyMax = maxSponsoredWei == 0 ? uint128(TICKET_PRICE) : maxSponsoredWei;
         _provisionSessionPolicy(
             _lobbyId,
             player,
@@ -242,7 +241,6 @@ contract LobbyManager is ActorAware {
 
         lobby.players.push(player);
         lobby.hasTicket[player] = true;
-        lobby.prizePool += TICKET_PRICE;
 
         emit TicketBought(_lobbyId, player);
 
@@ -269,38 +267,6 @@ contract LobbyManager is ActorAware {
 
     function getLobbyAgentInvite(uint256 lobbyId, address controller) external view returns (bool) {
         return lobbyAgentInvite[lobbyId][controller];
-    }
-
-    function _reserveSessionSponsorPool(uint256 _lobbyId, uint256 amount) internal {
-        Lobby storage lobby = lobbies[_lobbyId];
-        require(lobby.status == LobbyStatus.OPEN || lobby.status == LobbyStatus.ACTIVE, "Lobby not sponsorable");
-        require(amount <= lobby.prizePool, "Insufficient lobby pool");
-
-        lobby.prizePool -= amount;
-        sessionSponsorPool[_lobbyId] += amount;
-
-        emit SessionSponsorPoolReserved(_lobbyId, amount);
-    }
-
-    function _fundSessionEntryPoint(uint256 _lobbyId, address sessionKey, uint256 amount) internal {
-        Lobby storage lobby = lobbies[_lobbyId];
-        require(lobby.status == LobbyStatus.OPEN || lobby.status == LobbyStatus.ACTIVE, "Lobby not sponsorable");
-        require(sessionKey != address(0), "Session key missing");
-        require(entryPoint != address(0), "EntryPoint missing");
-        require(amount <= lobby.prizePool, "Insufficient lobby pool");
-
-        lobby.prizePool -= amount;
-        IEntryPointDeposits(entryPoint).depositTo{value: amount}(sessionKey);
-
-        emit SessionEntryPointFunded(_lobbyId, sessionKey, amount);
-    }
-
-    /// @dev Moves the same `amount` from prize pool into `sessionSponsorPool` so ERC-4337 paymasters can be reimbursed in postOp.
-    function _mirrorSessionSponsorPool(uint256 _lobbyId, uint256 amount) internal {
-        Lobby storage lobby = lobbies[_lobbyId];
-        require(amount <= lobby.prizePool, "Insufficient lobby pool for sponsor pool");
-        lobby.prizePool -= amount;
-        sessionSponsorPool[_lobbyId] += amount;
     }
 
     function _provisionSessionPolicy(
@@ -341,25 +307,27 @@ contract LobbyManager is ActorAware {
         emit GameStarted(_lobbyId);
     }
 
-    /// @notice Called by GameCore when a winner is determined (alloy win, last player standing). Credits `playerBalance` immediately.
-    function notifyGameWinner(uint256 _lobbyId, address winner) external {
+    /// @notice Called by GameCore when a match ends. Does not move `sessionSponsorPool` here — ERC-4337 `postOp` still needs the pool for gas reimbursement in the same UserOp. Call `distributeSessionSponsorRemainder` afterward (e.g. next tx).
+    function notifyGameSettled(uint256 _lobbyId, address winner) external {
         require(msg.sender == gameCore, "Only GameCore");
         Lobby storage lobby = lobbies[_lobbyId];
         require(lobby.status == LobbyStatus.ACTIVE, "Game not active");
-        require(winner != address(0), "No winner");
-        require(lobby.hasTicket[winner], "Winner must have ticket");
 
-        uint256 payout = lobby.prizePool;
         lobby.status = LobbyStatus.COMPLETED;
-        lobby.winner = winner;
-        playerBalance[winner] += payout;
-        _recordAgentStats(_lobbyId, winner, lobby.players);
 
-        emit GameCompleted(_lobbyId, winner, payout);
+        if (winner != address(0)) {
+            require(lobby.hasTicket[winner], "Winner must have ticket");
+            lobby.winner = winner;
+            _recordAgentStats(_lobbyId, winner, lobby.players);
+        } else {
+            lobby.winner = address(0);
+            _recordAgentStats(_lobbyId, address(0), lobby.players);
+        }
+
+        emit GameCompleted(_lobbyId, winner, 0);
     }
 
-    // Właściciel kończy grę i deklaruje zwycięzcę
-    // Cała pula idzie do zwycięzcy
+    /// @notice Host declares a winner after off-chain resolution. Sponsor pool is split via `distributeSessionSponsorRemainder` (not here), so sponsored `completeGame` can finish `postOp`.
     function completeGame(uint256 _lobbyId, address _winner) external {
         Lobby storage lobby = lobbies[_lobbyId];
         address player = _actor();
@@ -369,10 +337,19 @@ contract LobbyManager is ActorAware {
 
         lobby.status = LobbyStatus.COMPLETED;
         lobby.winner = _winner;
-        playerBalance[_winner] += lobby.prizePool;
         _recordAgentStats(_lobbyId, _winner, lobby.players);
 
-        emit GameCompleted(_lobbyId, _winner, lobby.prizePool);
+        emit GameCompleted(_lobbyId, _winner, 0);
+    }
+
+    /// @notice After `COMPLETED` or `CANCELLED`, moves remaining `sessionSponsorPool` to `playerBalance` for `withdraw()`. Safe to call multiple times; no-ops when pool is empty.
+    function distributeSessionSponsorRemainder(uint256 _lobbyId) external {
+        Lobby storage lobby = lobbies[_lobbyId];
+        require(
+            lobby.status == LobbyStatus.COMPLETED || lobby.status == LobbyStatus.CANCELLED,
+            "Lobby not settled"
+        );
+        _splitSessionSponsorToPlayerBalances(_lobbyId);
     }
 
     function _recordAgentStats(uint256 lobbyId, address winner, address[] storage players) internal {
@@ -386,9 +363,7 @@ contract LobbyManager is ActorAware {
         IAgentStatsRegistry(agentStatsRegistry).recordLobbyResult(lobbyId, roster, winner);
     }
 
-    /// @notice While lobby is OPEN, a non-host player may leave and reclaim their equal share of `prizePool` and
-    ///         `sessionSponsorPool` still held by this contract. Funds already sent to the ERC-4337 EntryPoint for the
-    ///         player's session account are not clawed back here (recover via account-abstraction / that depositor).
+    /// @notice While lobby is OPEN, a non-host player may leave and reclaim an equal share of `sessionSponsorPool` still held here. EntryPoint deposits are not clawed back.
     function leaveOpenLobby(uint256 _lobbyId) external {
         Lobby storage lobby = lobbies[_lobbyId];
         address player = _actor();
@@ -401,7 +376,6 @@ contract LobbyManager is ActorAware {
 
         uint256 prizeShare = lobby.prizePool / n;
         uint256 sponsorShare = sessionSponsorPool[_lobbyId] / n;
-        require(prizeShare + sponsorShare > 0, "Nothing to refund");
 
         lobby.prizePool -= prizeShare;
         sessionSponsorPool[_lobbyId] -= sponsorShare;
@@ -415,7 +389,7 @@ contract LobbyManager is ActorAware {
         emit PlayerLeftOpenLobby(_lobbyId, player, credited);
     }
 
-    /// @notice While lobby is OPEN, the host may remove a non-host player. Refund matches `leaveOpenLobby` (equal share of `prizePool` + `sessionSponsorPool` for current `n`).
+    /// @notice While lobby is OPEN, the host may remove a non-host player (same refund as `leaveOpenLobby`).
     function hostKickOpenLobbyPlayer(uint256 _lobbyId, address kicked) external {
         Lobby storage lobby = lobbies[_lobbyId];
         address hostAddr = _actor();
@@ -429,7 +403,6 @@ contract LobbyManager is ActorAware {
 
         uint256 prizeShare = lobby.prizePool / n;
         uint256 sponsorShare = sessionSponsorPool[_lobbyId] / n;
-        require(prizeShare + sponsorShare > 0, "Nothing to refund");
 
         lobby.prizePool -= prizeShare;
         sessionSponsorPool[_lobbyId] -= sponsorShare;
@@ -461,7 +434,6 @@ contract LobbyManager is ActorAware {
     }
 
     // Właściciel anuluje lobby (np. brak wystarczającej ilości graczy)
-    // Wszyscy gracze dostają zwrot puli / lub inny mechanizm
     function cancelLobby(uint256 _lobbyId) external {
         Lobby storage lobby = lobbies[_lobbyId];
         address player = _actor();
@@ -469,22 +441,6 @@ contract LobbyManager is ActorAware {
         require(lobby.status == LobbyStatus.OPEN, "Can only cancel open lobbies");
 
         lobby.status = LobbyStatus.CANCELLED;
-
-        uint256 n = lobby.players.length;
-        require(n > 0, "No players");
-        uint256 prize = lobby.prizePool;
-        uint256 sponsor = sessionSponsorPool[_lobbyId];
-        lobby.prizePool = 0;
-        sessionSponsorPool[_lobbyId] = 0;
-
-        // Split both prize pool and AA sponsor reserve (same idea as leaveOpenLobby per-player shares).
-        uint256 combined = prize + sponsor;
-        uint256 per = combined / n;
-        uint256 rem = combined % n;
-        for (uint256 i = 0; i < n; i++) {
-            uint256 extra = i < rem ? 1 : 0;
-            playerBalance[lobby.players[i]] += per + extra;
-        }
 
         emit LobbyCancelled(_lobbyId);
     }
@@ -502,6 +458,7 @@ contract LobbyManager is ActorAware {
 
     // ===== VIEW FUNCTIONS =====
 
+    /// @notice `prizePool` in the return tuple is a legacy field and is always zero; ticket value is held as `sessionSponsorPool` and EntryPoint deposits.
     function getLobby(uint256 _lobbyId) external view returns (
         address host,
         string memory name,

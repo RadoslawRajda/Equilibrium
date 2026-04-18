@@ -1,8 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
+const { asResourceTuple } = require("./helpers/resourceTuple.js");
 
-const TICKET_PRICE = ethers.parseEther("5");
+const TICKET_PRICE = ethers.parseEther("1");
 
 describe("Frontend-contracts integration", function () {
   it("exposes a complete chain snapshot compatible with frontend LobbyRepository reads", async function () {
@@ -48,10 +49,10 @@ describe("Frontend-contracts integration", function () {
     expect(mapConfig[0]).to.equal(seed);
     expect(mapConfig[1]).to.equal(radius);
 
-    const buildCost = await gameCore.getBuildCost();
-    const upgradeCost = await gameCore.getUpgradeCost();
-    const discoverCost = await gameCore.previewDiscoverCost(lobbyId, host.address);
-    const hostResources = await gameCore.getPlayerResources(lobbyId, host.address);
+    const buildCost = asResourceTuple(await gameCore.getBuildCost());
+    const upgradeCost = asResourceTuple(await gameCore.getUpgradeCost());
+    const discoverCost = asResourceTuple(await gameCore.previewDiscoverCost(lobbyId, host.address));
+    const hostResources = asResourceTuple(await gameCore.getPlayerResources(lobbyId, host.address));
 
     expect(buildCost[0]).to.equal(1n);
     expect(upgradeCost[0]).to.equal(2n);

@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { TICKET_PRICE } = require("./gameplay.config.js");
 
 describe("AA and ERC-8004 adapters", function () {
   it("sponsors a session user operation through paymaster hook", async function () {
@@ -21,8 +22,7 @@ describe("AA and ERC-8004 adapters", function () {
     await sessionForwarder.setSponsorPool(await lobbyManager.getAddress());
     await lobbyManager.setSessionSponsorManager(await sessionForwarder.getAddress());
 
-    await lobbyManager.connect(host).createLobby("AA Arena", { value: ethers.parseEther("5") });
-    await lobbyManager.connect(host).reserveSessionSponsorPool(1, ethers.parseEther("0.01"));
+    await lobbyManager.connect(host).createLobby("AA Arena", { value: TICKET_PRICE });
 
     const expiresAt = BigInt((await ethers.provider.getBlock("latest")).timestamp + 3600);
     await sessionForwarder.setSessionPolicy(relayer.address, host.address, 1, expiresAt, ethers.parseEther("0.004"), true);
@@ -36,7 +36,7 @@ describe("AA and ERC-8004 adapters", function () {
     ).to.emit(paymasterHook, "UserOperationSponsored");
 
     expect(await sessionForwarder.sessionSponsoredWei(relayer.address)).to.equal(ethers.parseEther("0.003"));
-    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(ethers.parseEther("0.007"));
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(TICKET_PRICE - ethers.parseEther("0.003"));
 
     const preview = await paymasterHook.previewSponsorship(relayer.address, ethers.parseEther("0.002"));
     expect(preview[0]).to.equal(false);
