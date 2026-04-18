@@ -7,6 +7,14 @@ interface IEntryPointDeposits {
     function depositTo(address account) external payable;
 }
 
+interface IAgentStatsRegistry {
+    function recordLobbyResult(uint256 lobbyId, address[] calldata players, address winner) external;
+}
+
+interface IRegisteredAgentLookup {
+    function getAgentByController(address controller) external view returns (address);
+}
+
 contract LobbyManager is ActorAware {
     uint256 public constant TICKET_PRICE = 5 ether;
     /// @notice Share of each ticket (basis points) carved out for AA: half to EntryPoint deposit on session account, half to sessionSponsorPool for paymaster reimbursements.
@@ -45,6 +53,7 @@ contract LobbyManager is ActorAware {
 
     /// @dev Set once after GameCore deployment; only that contract may call `notifyGameWinner`.
     address public gameCore;
+    address public agentStatsRegistry;
 
     event LobbyCreated(uint256 indexed lobbyId, address indexed host, string name);
     event TicketBought(uint256 indexed lobbyId, address indexed player);
@@ -52,6 +61,7 @@ contract LobbyManager is ActorAware {
     event GameCompleted(uint256 indexed lobbyId, address indexed winner, uint256 prizeAmount);
     event LobbyCancelled(uint256 indexed lobbyId);
     event PlayerLeftOpenLobby(uint256 indexed lobbyId, address indexed player, uint256 creditedWei);
+    event PlayerKickedOpenLobby(uint256 indexed lobbyId, address indexed kicked, uint256 creditedWei);
     event PrizeWithdrawn(uint256 indexed lobbyId, address indexed winner, uint256 amount);
     event SessionSponsorManagerUpdated(address indexed previousManager, address indexed newManager);
     event SessionPolicyRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
@@ -66,10 +76,21 @@ contract LobbyManager is ActorAware {
         uint64 expiresAt,
         uint128 maxSponsoredWei
     );
+    event AgentStatsRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+    event LobbyAgentInvited(uint256 indexed lobbyId, address indexed controller, address indexed host);
+    event LobbyAgentInviteCleared(uint256 indexed lobbyId, address indexed controller);
+
+    /// @dev Controller wallet of a registered ERC-8004 player agent; host sets this so the bot can discover the lobby on-chain.
+    mapping(uint256 => mapping(address => bool)) public lobbyAgentInvite;
 
     function setGameCore(address _gameCore) external onlyOwner {
         require(gameCore == address(0) && _gameCore != address(0), "GameCore already set");
         gameCore = _gameCore;
+    }
+
+    function setAgentStatsRegistry(address newRegistry) external onlyOwner {
+        emit AgentStatsRegistryUpdated(agentStatsRegistry, newRegistry);
+        agentStatsRegistry = newRegistry;
     }
 
     function setSessionPolicyRegistry(address newRegistry) external onlyOwner {
@@ -224,6 +245,30 @@ contract LobbyManager is ActorAware {
         lobby.prizePool += TICKET_PRICE;
 
         emit TicketBought(_lobbyId, player);
+
+        if (lobbyAgentInvite[_lobbyId][player]) {
+            delete lobbyAgentInvite[_lobbyId][player];
+            emit LobbyAgentInviteCleared(_lobbyId, player);
+        }
+    }
+
+    /// @notice Host invites a registered agent controller to buy a ticket and join (signal read on-chain by the agent).
+    function inviteAgentToLobby(uint256 lobbyId, address controller) external {
+        Lobby storage lobby = lobbies[lobbyId];
+        address host = _actor();
+        require(host == lobby.host, "Only host can invite");
+        require(lobby.status == LobbyStatus.OPEN, "Lobby not open");
+        require(controller != address(0), "Controller required");
+        address reg = agentStatsRegistry;
+        require(reg != address(0), "Agent registry not configured");
+        address agent = IRegisteredAgentLookup(reg).getAgentByController(controller);
+        require(agent != address(0), "Not a registered agent controller");
+        lobbyAgentInvite[lobbyId][controller] = true;
+        emit LobbyAgentInvited(lobbyId, controller, host);
+    }
+
+    function getLobbyAgentInvite(uint256 lobbyId, address controller) external view returns (bool) {
+        return lobbyAgentInvite[lobbyId][controller];
     }
 
     function _reserveSessionSponsorPool(uint256 _lobbyId, uint256 amount) internal {
@@ -308,6 +353,7 @@ contract LobbyManager is ActorAware {
         lobby.status = LobbyStatus.COMPLETED;
         lobby.winner = winner;
         playerBalance[winner] += payout;
+        _recordAgentStats(_lobbyId, winner, lobby.players);
 
         emit GameCompleted(_lobbyId, winner, payout);
     }
@@ -324,8 +370,20 @@ contract LobbyManager is ActorAware {
         lobby.status = LobbyStatus.COMPLETED;
         lobby.winner = _winner;
         playerBalance[_winner] += lobby.prizePool;
+        _recordAgentStats(_lobbyId, _winner, lobby.players);
 
         emit GameCompleted(_lobbyId, _winner, lobby.prizePool);
+    }
+
+    function _recordAgentStats(uint256 lobbyId, address winner, address[] storage players) internal {
+        if (agentStatsRegistry == address(0)) {
+            return;
+        }
+        address[] memory roster = new address[](players.length);
+        for (uint256 i = 0; i < players.length; i++) {
+            roster[i] = players[i];
+        }
+        IAgentStatsRegistry(agentStatsRegistry).recordLobbyResult(lobbyId, roster, winner);
     }
 
     /// @notice While lobby is OPEN, a non-host player may leave and reclaim their equal share of `prizePool` and
@@ -355,6 +413,39 @@ contract LobbyManager is ActorAware {
         lobby.hasTicket[player] = false;
 
         emit PlayerLeftOpenLobby(_lobbyId, player, credited);
+    }
+
+    /// @notice While lobby is OPEN, the host may remove a non-host player. Refund matches `leaveOpenLobby` (equal share of `prizePool` + `sessionSponsorPool` for current `n`).
+    function hostKickOpenLobbyPlayer(uint256 _lobbyId, address kicked) external {
+        Lobby storage lobby = lobbies[_lobbyId];
+        address hostAddr = _actor();
+        require(hostAddr == lobby.host, "Only host");
+        require(lobby.status == LobbyStatus.OPEN, "Lobby not open");
+        require(kicked != lobby.host, "Cannot kick host");
+        require(lobby.hasTicket[kicked], "No ticket");
+
+        uint256 n = lobby.players.length;
+        require(n > 1, "Cannot kick sole participant");
+
+        uint256 prizeShare = lobby.prizePool / n;
+        uint256 sponsorShare = sessionSponsorPool[_lobbyId] / n;
+        require(prizeShare + sponsorShare > 0, "Nothing to refund");
+
+        lobby.prizePool -= prizeShare;
+        sessionSponsorPool[_lobbyId] -= sponsorShare;
+
+        uint256 credited = prizeShare + sponsorShare;
+        playerBalance[kicked] += credited;
+
+        _removeOpenLobbyPlayer(lobby, kicked);
+        lobby.hasTicket[kicked] = false;
+
+        if (lobbyAgentInvite[_lobbyId][kicked]) {
+            delete lobbyAgentInvite[_lobbyId][kicked];
+            emit LobbyAgentInviteCleared(_lobbyId, kicked);
+        }
+
+        emit PlayerKickedOpenLobby(_lobbyId, kicked, credited);
     }
 
     function _removeOpenLobbyPlayer(Lobby storage lobby, address player) internal {

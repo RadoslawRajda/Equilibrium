@@ -1,8 +1,8 @@
 import { readFileSync, existsSync } from "node:fs";
-import { createPublicClient, createWalletClient, defineChain, http } from "viem";
+import { type PublicClient, createPublicClient, createWalletClient, defineChain, http } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
-import { loadDeployments, envStr, envNum } from "./config.js";
+import { loadDeployments, loadDeploymentsWhenReady, envStr, envNum } from "./config.js";
 import { resolvePromptPath } from "./promptPaths.js";
 import { buildSnapshot, trimSnapshotForLlm } from "./snapshot.js";
 import { askOllama, askOllamaStartingHex, summarizeActionsForLog } from "./llm.js";
@@ -19,7 +19,6 @@ import {
 
 const POLL_MS = envNum("POLL_MS", 8000);
 const RPC_URL = envStr("RPC_URL", "http://127.0.0.1:8545");
-const REGISTRY_URL = envStr("REGISTRY_URL", "http://127.0.0.1:4050");
 const OLLAMA_URL = envStr("OLLAMA_URL", "http://127.0.0.1:11434");
 const OLLAMA_MODEL = envStr("OLLAMA_MODEL", "llama3.2");
 const MNEMONIC = envStr(
@@ -43,50 +42,48 @@ const chain = defineChain({
   rpcUrls: { default: { http: [RPC_URL] } }
 });
 
-async function registerAgent(address: string) {
-  const idP = resolvePromptPath(
-    "PLAYER_IDENTITY_PATH",
-    "personas/equinox.md",
-    "EQUINOX_IDENTITY_PATH"
+async function waitUntilBytecode(
+  publicClient: PublicClient,
+  label: string,
+  address: `0x${string}`,
+  maxWaitMs = 180_000,
+  pollMs = 2000
+) {
+  const deadline = Date.now() + maxWaitMs;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    const code = await publicClient.getBytecode({ address });
+    if (code && code !== "0x") {
+      return;
+    }
+    attempt += 1;
+    if (attempt === 1 || attempt % 5 === 0) {
+      console.warn(
+        `[player-agent] ${label} ${address} — no bytecode on ${RPC_URL} (chain id ${chain.id}); ` +
+          `Hardhat may not have deployed yet, or Anvil was reset while localhost.json still has old addresses (attempt ${attempt})`
+      );
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  throw new Error(
+    `[player-agent] ${label} at ${address}: no contract code on ${RPC_URL} after ${maxWaitMs}ms. ` +
+      "Redeploy to this node and refresh deployments/localhost.json (docker: let the hardhat service finish deploy)."
   );
-  const stP = resolvePromptPath(
-    "PLAYER_STRATEGY_PATH",
-    "skills/strategy.md",
-    "EQUINOX_STRATEGY_PATH"
-  );
-  const personality = [
-    existsSync(idP) ? readFileSync(idP, "utf8") : "",
-    existsSync(stP) ? readFileSync(stP, "utf8") : ""
-  ]
-    .join("\n")
-    .slice(0, 1500);
-  await fetch(`${REGISTRY_URL.replace(/\/$/, "")}/agents/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address, name: AGENT_NAME, personality })
-  }).catch((e) => console.warn("[player-agent] registry register failed", e));
-}
-
-async function fetchInvites(forAddr: string) {
-  const u = `${REGISTRY_URL.replace(/\/$/, "")}/invites?for=${encodeURIComponent(forAddr)}`;
-  const res = await fetch(u);
-  if (!res.ok) return [];
-  return (await res.json()) as { lobbyId: string }[];
-}
-
-async function consumeInvite(lobbyId: string, targetAddress: string) {
-  await fetch(
-    `${REGISTRY_URL.replace(/\/$/, "")}/invites/${lobbyId}/${targetAddress}/consume`,
-    { method: "POST" }
-  ).catch(() => {});
 }
 
 async function main() {
-  const dep = loadDeployments();
+  let dep;
+  if (process.env.PLAYER_SKIP_ERC8004_REGISTRY_WAIT === "1") {
+    dep = loadDeployments();
+  } else {
+    console.log("[player-agent] waiting for deployments (including ERC8004PlayerAgentRegistry)…");
+    dep = await loadDeploymentsWhenReady();
+  }
   const lm = dep.contracts.LobbyManager.address;
   const gc = dep.contracts.GameCore.address;
   const lmAbi = dep.contracts.LobbyManager.abi;
   const gcAbi = dep.contracts.GameCore.abi;
+  const onChainAgentRegistry = dep.contracts.ERC8004PlayerAgentRegistry;
 
   const account = mnemonicToAccount(MNEMONIC, {
     path: `m/44'/60'/0'/0/${ACCOUNT_INDEX}`
@@ -99,8 +96,78 @@ async function main() {
     transport: http(RPC_URL)
   });
 
+  await waitUntilBytecode(publicClient, "LobbyManager", lm);
+  await waitUntilBytecode(publicClient, "GameCore", gc);
+  if (onChainAgentRegistry) {
+    await waitUntilBytecode(publicClient, "ERC8004PlayerAgentRegistry", onChainAgentRegistry.address);
+  }
+
+  const ensureOnChainAgentIdentity = async (): Promise<`0x${string}` | undefined> => {
+    if (!onChainAgentRegistry) {
+      console.warn("[player-agent] ERC8004PlayerAgentRegistry missing in deployments; skipping on-chain agent identity");
+      return undefined;
+    }
+    const registryAddress = onChainAgentRegistry.address;
+    const registryAbi = onChainAgentRegistry.abi;
+
+    const current = (await publicClient.readContract({
+      address: registryAddress,
+      abi: registryAbi,
+      functionName: "getAgentByController",
+      args: [account.address]
+    })) as `0x${string}`;
+    const zero = "0x0000000000000000000000000000000000000000";
+    if (current && current.toLowerCase() !== zero) {
+      return current;
+    }
+
+    const metadataUri = `agent://${AGENT_NAME.toLowerCase()}/${ACCOUNT_INDEX}`;
+    let txHash: `0x${string}`;
+    try {
+      txHash = await walletClient.writeContract({
+        address: registryAddress,
+        abi: registryAbi,
+        functionName: "createAndRegisterAgent",
+        args: [AGENT_NAME, metadataUri],
+        chain,
+        account: account.address
+      } as never);
+    } catch (e) {
+      console.error(
+        "[player-agent] createAndRegisterAgent tx failed (revert, wrong chain, or insufficient ETH for identity deploy)",
+        e
+      );
+      throw e;
+    }
+    await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    const created = (await publicClient.readContract({
+      address: registryAddress,
+      abi: registryAbi,
+      functionName: "getAgentByController",
+      args: [account.address]
+    })) as `0x${string}`;
+    if (!created || created.toLowerCase() === zero) {
+      throw new Error("On-chain agent registration did not persist");
+    }
+    try {
+      const count = (await publicClient.readContract({
+        address: registryAddress,
+        abi: registryAbi,
+        functionName: "getAgentCount"
+      })) as bigint;
+      console.log(`[player-agent] ERC8004 registry total agents (getAgentCount): ${count}`);
+    } catch {
+      /* optional */
+    }
+    return created;
+  };
+
   console.log(`[player-agent] ${AGENT_NAME} wallet ${account.address} (index ${ACCOUNT_INDEX})`);
-  await registerAgent(account.address);
+  const onChainAgentAddress = await ensureOnChainAgentIdentity();
+  if (onChainAgentAddress) {
+    console.log(`[player-agent] ${AGENT_NAME} on-chain ERC8004 agent ${onChainAgentAddress}`);
+  }
 
   /** Avoids repeat `joinLobby` txs each poll (join is on-chain noop but still logs/spams gas). */
   const gcJoinAttempted = new Set<string>();
@@ -172,7 +239,6 @@ async function main() {
 
   const processInvite = async (lobbyIdStr: string) => {
     await ensureTicketAndJoin(lobbyIdStr);
-    await consumeInvite(lobbyIdStr, account.address);
   };
 
   const playLobby = async (lobbyIdStr: string) => {
@@ -312,12 +378,6 @@ async function main() {
 
   for (;;) {
     try {
-      const invites = await fetchInvites(account.address);
-      const inviteLobbyIds = [...new Set(invites.map((i) => i.lobbyId).filter(Boolean))] as string[];
-      for (const lid of inviteLobbyIds) {
-        await processInvite(lid);
-      }
-
       const lobbyCount = Number(
         (await publicClient.readContract({
           address: lm,
@@ -327,6 +387,16 @@ async function main() {
       );
 
       for (let i = 1; i <= lobbyCount; i += 1) {
+        const invited = (await publicClient.readContract({
+          address: lm,
+          abi: lmAbi,
+          functionName: "getLobbyAgentInvite",
+          args: [BigInt(i), account.address]
+        })) as boolean;
+        if (invited) {
+          await processInvite(String(i));
+        }
+
         const lobbyId = BigInt(i);
         const hasT = (await publicClient.readContract({
           address: lm,

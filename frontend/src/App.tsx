@@ -1,7 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
-import { ArrowRightLeft, CheckCircle2, Factory, Flag, Hammer, Leaf, Sparkles, Vote,Pickaxe,ChevronDown, Check,Settings, TreePine, UtensilsCrossed,Landmark, Wheat, BatteryCharging, Diamond,ArrowRight} from "lucide-react";
+import {
+  ArrowRightLeft,
+  ArrowRight,
+  BatteryCharging,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Diamond,
+  Factory,
+  Flag,
+  Hammer,
+  Landmark,
+  Leaf,
+  Pickaxe,
+  Settings,
+  Sparkles,
+  TreePine,
+  UtensilsCrossed,
+  Vote,
+  Wheat
+} from "lucide-react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useAccount, useConnect, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
 import { createPublicClient, encodeFunctionData, formatEther, http, parseEther } from "viem";
@@ -57,6 +77,10 @@ type ContractMeta = {
       abi: any[];
     };
     GameCore: {
+      address: `0x${string}`;
+      abi: any[];
+    };
+    ERC8004PlayerAgentRegistry?: {
       address: `0x${string}`;
       abi: any[];
     };
@@ -125,6 +149,34 @@ function tradeResourcesTuple(value: Record<string, unknown> | null | undefined):
   };
 }
 
+/** `listAgents` return: viem often decodes Solidity structs as `[agent, controller, name]` tuples. */
+function parseListAgentsRows(raw: unknown): { agent: string; controller: string; name: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { agent: string; controller: string; name: string }[] = [];
+  const asAddr = (v: unknown) => (typeof v === "string" ? v : String(v ?? ""));
+  for (const row of raw) {
+    if (Array.isArray(row) && row.length >= 3) {
+      const agent = asAddr(row[0]);
+      const controller = asAddr(row[1]);
+      const name = asAddr(row[2]);
+      if (/^0x[a-fA-F0-9]{40}$/.test(controller)) {
+        out.push({ agent, controller, name });
+      }
+      continue;
+    }
+    if (row && typeof row === "object") {
+      const o = row as Record<string, unknown>;
+      const agent = asAddr(o.agent);
+      const controller = asAddr(o.controller);
+      const name = asAddr(o.name);
+      if (/^0x[a-fA-F0-9]{40}$/.test(controller)) {
+        out.push({ agent, controller, name });
+      }
+    }
+  }
+  return out;
+}
+
 function AppPage() {
   const navigate = useNavigate();
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -182,7 +234,10 @@ function AppPage() {
   const [ticketPriceWei, setTicketPriceWei] = useState<bigint | null>(null);
   /** LobbyManager.playerBalance(address) — call withdraw() to receive ETH. */
   const [lmWithdrawableWei, setLmWithdrawableWei] = useState<bigint | null>(null);
-  const [registryAgents, setRegistryAgents] = useState<{ address: string; name: string }[]>([]);
+  const [registryAgents, setRegistryAgents] = useState<
+    { address: string; name: string; identity?: string }[]
+  >([]);
+  const [chainRegistryAgentsError, setChainRegistryAgentsError] = useState<string | null>(null);
   const [spectatorTradeFeed, setSpectatorTradeFeed] = useState<TradeFeedItem[]>([]);
   const [spectatorTradeFeedLoading, setSpectatorTradeFeedLoading] = useState(false);
   const [tradeOffersModalOpen, setTradeOffersModalOpen] = useState(false);
@@ -215,6 +270,10 @@ function AppPage() {
   const lobbyManagerAbi = contracts?.contracts?.LobbyManager?.abi;
   const gameCoreAddress = contracts?.contracts?.GameCore?.address as `0x${string}` | undefined;
   const gameCoreAbi = contracts?.contracts?.GameCore?.abi;
+  const erc8004RegistryAddress = contracts?.contracts?.ERC8004PlayerAgentRegistry?.address as
+    | `0x${string}`
+    | undefined;
+  const erc8004RegistryAbi = contracts?.contracts?.ERC8004PlayerAgentRegistry?.abi;
   const rpcDisplay = import.meta.env.VITE_RPC_URL || "http://localhost:8545";
 
   useEffect(() => {
@@ -757,27 +816,51 @@ function AppPage() {
   );
 
   useEffect(() => {
-    const base = import.meta.env.VITE_AGENT_REGISTRY_URL as string | undefined;
-    if (!base) return;
+    if (!publicClient) {
+      setRegistryAgents([]);
+      setChainRegistryAgentsError(null);
+      return;
+    }
+    if (!erc8004RegistryAddress || !erc8004RegistryAbi) {
+      setRegistryAgents([]);
+      setChainRegistryAgentsError(
+        "ERC8004PlayerAgentRegistry is missing from deployments (run contract deploy and sync frontend ABI)."
+      );
+      return;
+    }
     let cancelled = false;
-    void fetch(`${base.replace(/\/$/, "")}/agents`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: unknown) => {
-        if (cancelled || !Array.isArray(data)) return;
+    const load = async () => {
+      try {
+        const raw = await publicClient.readContract({
+          address: erc8004RegistryAddress,
+          abi: erc8004RegistryAbi,
+          functionName: "listAgents",
+          args: [0n, 64n]
+        } as any);
+        if (cancelled) return;
+        const parsed = parseListAgentsRows(raw);
+        setChainRegistryAgentsError(null);
         setRegistryAgents(
-          data
-            .map((x: { address?: string; name?: string }) => ({
-              address: String(x.address ?? ""),
-              name: String(x.name ?? "Agent")
-            }))
-            .filter((x) => x.address.startsWith("0x"))
+          parsed.map((r) => ({
+            address: r.controller,
+            name: r.name.trim() ? r.name : "Agent",
+            identity: r.agent.startsWith("0x") ? r.agent : undefined
+          }))
         );
-      })
-      .catch(() => {});
+      } catch (e) {
+        if (!cancelled) {
+          setRegistryAgents([]);
+          setChainRegistryAgentsError(e instanceof Error ? e.message : String(e));
+        }
+      }
+    };
+    void load();
+    const interval = setInterval(() => void load(), 4000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
-  }, []);
+  }, [publicClient, erc8004RegistryAddress, erc8004RegistryAbi]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1165,20 +1248,68 @@ function AppPage() {
     }
   };
 
-  const onInviteAgent = async (agentAddress: string) => {
-    const base = import.meta.env.VITE_AGENT_REGISTRY_URL as string | undefined;
-    if (!base || !activeLobby || !address) return;
+  const onKickHostOpenLobby = async (kickedAddress: string) => {
+    if (!activeLobby || !address || !walletClient || !publicClient || !lobbyManagerAddress || !lobbyManagerAbi) return;
+    if (kickedAddress.toLowerCase() === address.toLowerCase()) return;
+    setError("");
+    const pendingKey = `lobby:kick:${kickedAddress.toLowerCase()}`;
+    setPendingAction(pendingKey);
+    try {
+      let txHash: `0x${string}`;
+      if (useAaForLobbyFollowups) {
+        await ensureLobbySession(activeLobby.id, address);
+        txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: lobbyManagerAddress,
+          contractAbi: lobbyManagerAbi,
+          functionName: "hostKickOpenLobbyPlayer",
+          args: [BigInt(activeLobby.id), kickedAddress as `0x${string}`]
+        });
+      } else {
+        txHash = await walletClient.writeContract({
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "hostKickOpenLobbyPlayer",
+          account: address,
+          args: [BigInt(activeLobby.id), kickedAddress as `0x${string}`]
+        } as any);
+      }
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
+      await syncActiveLobbyFromChain(activeLobby.id);
+      await syncLobbiesFromChain();
+    } catch (e: any) {
+      setError(e.message);
+      console.error("hostKickOpenLobbyPlayer failed", e);
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const onInviteAgent = async (controllerAddress: string) => {
+    if (!activeLobby || !address || !walletClient || !publicClient || !lobbyManagerAddress || !lobbyManagerAbi) return;
     setError("");
     setPendingAction("lobby:invite-agent");
     try {
-      const res = await fetch(`${base.replace(/\/$/, "")}/lobbies/${activeLobby.id}/invite`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetAddress: agentAddress, hostAddress: address })
-      });
-      if (!res.ok) {
-        throw new Error(`Invite failed: ${res.status}`);
+      let txHash: `0x${string}`;
+      if (useAaForLobbyFollowups) {
+        await ensureLobbySession(activeLobby.id, address);
+        txHash = await sendSessionTransaction({
+          lobbyId: activeLobby.id,
+          contractAddress: lobbyManagerAddress,
+          contractAbi: lobbyManagerAbi,
+          functionName: "inviteAgentToLobby",
+          args: [BigInt(activeLobby.id), controllerAddress as `0x${string}`]
+        });
+      } else {
+        txHash = await walletClient.writeContract({
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "inviteAgentToLobby",
+          account: address,
+          args: [BigInt(activeLobby.id), controllerAddress as `0x${string}`]
+        } as any);
       }
+      await publicClient.waitForTransactionReceipt({ hash: txHash });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -1248,12 +1379,14 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:discover") {
+        const hex = activeLobby.mapHexes.find((tile) => tile.id === payload.hexId);
+        if (!hex) throw new Error("Hex not found");
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
           contractAbi: gameCoreAbi,
           functionName: "discoverHex",
-          args: [lobbyId, payload.hexId]
+          args: [lobbyId, hex.id, BigInt(hex.q), BigInt(hex.r)]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "game:build") {
@@ -1478,6 +1611,142 @@ function AppPage() {
     selectedActionCost = selectedActionCost ? `${selectedActionCost} · ${collectHint}` : collectHint;
   }
 
+  const costChip = (kind: ResourceKey, value: number) => {
+    const accents: Record<ResourceKey, string> = {
+      food: "#ffd369",
+      wood: "#5bff9d",
+      stone: "#96b7ff",
+      ore: "#ff9f6e",
+      energy: "#56f0ff"
+    };
+    const iconByKind: Record<ResourceKey, typeof Wheat> = {
+      food: Wheat,
+      wood: TreePine,
+      stone: Pickaxe,
+      ore: UtensilsCrossed,
+      energy: BatteryCharging
+    };
+    const Icon = iconByKind[kind];
+    return (
+      <span key={`${kind}:${value}`} className="spectator-res-chip" style={{ borderColor: `${accents[kind]}55` }} title={`${kind} ${value}`}>
+        <Icon size={12} color={accents[kind]} aria-hidden />
+        <strong>{value}</strong>
+      </span>
+    );
+  };
+
+  const costStrip = (cost: { food?: number; wood?: number; stone?: number; ore?: number; energy?: number }) => {
+    const entries = [
+      ["food", Number(cost.food ?? 0)] as const,
+      ["wood", Number(cost.wood ?? 0)] as const,
+      ["stone", Number(cost.stone ?? 0)] as const,
+      ["ore", Number(cost.ore ?? 0)] as const,
+      ["energy", Number(cost.energy ?? 0)] as const
+    ].filter(([, amount]) => Number.isFinite(amount) && amount > 0);
+    if (!entries.length) return <span className="selected-text">free</span>;
+    return entries.map(([kind, amount]) => costChip(kind, amount));
+  };
+
+  const hexById = (hexId: string) => activeLobby?.mapHexes.find((hex) => hex.id === hexId);
+  const isMineHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(hex?.owner && address && hex.owner.toLowerCase() === address.toLowerCase());
+  };
+  const canDiscoverHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(
+      hex &&
+      activeLobby?.status === "running" &&
+      !hex.owner &&
+      isAdjacentToOwnedHex(activeLobby?.mapHexes ?? [], hex, address)
+    );
+  };
+  const canUpgradeHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(hex && isMineHex(hexId) && hex.structure?.level === 1);
+  };
+  const canBuildHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    return Boolean(hex && isMineHex(hexId) && !hex.structure);
+  };
+  const collectInfoForHex = (hexId: string) => {
+    const hex = hexById(hexId);
+    const level = hex?.structure?.level === 2 ? 2 : 1;
+    const energy = level === 2 ? activeActionCosts?.collectEnergyLevel2 : activeActionCosts?.collectEnergyLevel1;
+    const yieldValue = level === 2 ? activeActionCosts?.collectResourceYieldLevel2 : activeActionCosts?.collectResourceYieldLevel1;
+    const energyKnownForHex = typeof energy === "number" && Number.isFinite(energy);
+    const yieldKnownForHex = typeof yieldValue === "number" && Number.isFinite(yieldValue);
+    const energyLabelForHex = energyKnownForHex ? `energy ${energy}` : activeActionCosts ? "—" : "loading...";
+    const gainLabelForHex = yieldKnownForHex ? `+${yieldValue} basic (biome)` : "";
+    return {
+      canCollect: Boolean(hex && isMineHex(hexId) && hex.structure),
+      energyLabel: energyLabelForHex,
+      gainLabel: gainLabelForHex,
+      yieldValue,
+      yieldKnown: yieldKnownForHex
+    };
+  };
+
+  const hexContextMenuActions = {
+    discover: {
+      visible: (hexId: string) => canDiscoverHex(hexId),
+      enabled: () => !pendingAction,
+      label: "Discover / Claim",
+      details: discoverCost ? costStrip(discoverCost) : <span className="selected-text">loading...</span>,
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:discover", { hexId });
+      }
+    },
+    build: {
+      visible: (hexId: string) => canBuildHex(hexId),
+      enabled: () => !pendingAction,
+      label: "Build lvl1",
+      details: buildCost ? costStrip(buildCost) : <span className="selected-text">loading...</span>,
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:build", { hexId });
+      }
+    },
+    upgrade: {
+      visible: (hexId: string) => canUpgradeHex(hexId),
+      enabled: () => !pendingAction,
+      label: "Upgrade lvl2",
+      details: upgradeCost ? costStrip(upgradeCost) : <span className="selected-text">loading...</span>,
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:upgrade", { hexId });
+      }
+    },
+    collect: {
+      visible: (hexId: string) => collectInfoForHex(hexId).canCollect,
+      enabled: () => !pendingAction,
+      label: "Collect resources",
+      details: (hexId: string) => {
+        const collectInfo = collectInfoForHex(hexId);
+        const level = hexById(hexId)?.structure?.level === 2 ? 2 : 1;
+        const energyCost = level === 2 ? activeActionCosts?.collectEnergyLevel2 : activeActionCosts?.collectEnergyLevel1;
+        if (typeof energyCost !== "number" || !Number.isFinite(energyCost)) {
+          return <span className="selected-text">loading...</span>;
+        }
+        return (
+          <>
+            {costChip("energy", energyCost)}
+            {collectInfo.gainLabel ? <span className="selected-text">{collectInfo.gainLabel}</span> : null}
+          </>
+        );
+      },
+      hint: "",
+      onClick: (hexId: string) => {
+        if (pendingAction) return;
+        void action("game:collect", { hexId }, true);
+      }
+    }
+  };
+
   const walletConnectConnector = connectors.find((c) => c.id === "injected") || connectors[0];
 
   if (!isConnected) {
@@ -1648,8 +1917,14 @@ function AppPage() {
         actionError={error}
         agentAddresses={agentAddressSet}
         registeredAgents={registryAgents}
+        chainRegistryAgentsError={chainRegistryAgentsError}
+        inviteUses4337={useAaForLobbyFollowups}
         onInviteAgent={onInviteAgent}
         inviteAgentPending={pendingAction === "lobby:invite-agent"}
+        onKickPlayer={isLobbyHost ? (addr) => void onKickHostOpenLobby(addr) : undefined}
+        kickPlayerPendingAddress={
+          pendingAction?.startsWith("lobby:kick:") ? pendingAction.slice("lobby:kick:".length) : null
+        }
       />
     );
   }
@@ -1657,7 +1932,7 @@ function AppPage() {
   return (
     <div className={`game-shell${isSpectator ? " game-shell--spectator" : ""}`}>
       {!isSpectator ? (
-        <ResourcePanel me={projectedMe} round={projectedRound.index} effects={activeLobby.activeEffects} />
+        <ResourcePanel me={projectedMe} round={projectedRound.index} effects={activeLobby.activeEffects} onBack={() => navigate("/")} />
       ) : (
         <aside className="panel spectator-sidebar">
           <SpectatorPlayersPanel
@@ -1707,6 +1982,7 @@ function AppPage() {
           myAddress={isSpectator ? undefined : address}
           selectedHex={highlightedHex}
           earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
+          contextMenuActions={isSpectator ? undefined : hexContextMenuActions}
           onHexClick={(id) => {
             if (pendingAction) return;
             setSelectedHex(id);

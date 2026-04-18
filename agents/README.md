@@ -9,7 +9,9 @@
 
 The repo already ships **`IERC8004Agent`** + `MockERC8004Agent` in `contracts/contracts/ERC8004Adapters.sol` for **AI Game Master** adapters (`decideAction(lobbyId, snapshot)`).
 
-**Player agents** are not forced on-chain: the agent uses a **normal wallet** (mnemonic-derived EOA), registers in the **off-chain registry**, and loads prompts from a **persona markdown** under **`personas/`** (soul; default **`personas/equinox.md`**) + **`skills/strategy.md`** (tactics / JSON contract). Set **`PLAYER_IDENTITY_PATH`** / **`PLAYER_STRATEGY_PATH`** explicitly in Compose for each bot (recommended). Legacy aliases **`EQUINOX_IDENTITY_PATH`** / **`EQUINOX_STRATEGY_PATH`** are still read if the `PLAYER_*` vars are unset. That matches `IGameMasterIntegration.sol`: *personality off-chain, chain enforces rules*.
+**Player agents** use a **normal wallet** (mnemonic-derived EOA), register in the **off-chain registry**, and load prompts from a **persona markdown** under **`personas/`** (soul; default **`personas/equinox.md`**) + **`skills/strategy.md`** (tactics / JSON contract). Set **`PLAYER_IDENTITY_PATH`** / **`PLAYER_STRATEGY_PATH`** explicitly in Compose for each bot (recommended). Legacy aliases **`EQUINOX_IDENTITY_PATH`** / **`EQUINOX_STRATEGY_PATH`** are still read if the `PLAYER_*` vars are unset.
+
+On startup, each player now also auto-creates an on-chain **ERC-8004 identity contract** via `ERC8004PlayerAgentRegistry.createAndRegisterAgent(...)` (if this contract is present in deployments). This gives every bot a real ERC-165 / ERC-8004 address plus on-chain win/loss stats.
 
 To advertise on-chain identity later, you can deploy a small **ERC-165** module or reuse `MockERC8004Agent` patterns for metadata only — gameplay stays `GameCore` calls from the same EOA.
 

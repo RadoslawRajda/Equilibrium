@@ -67,6 +67,11 @@ async function main() {
   deployed.EntryPoint = { address: ep.address, abi: ep.abi };
   console.log("Using EntryPoint at", ep.address);
 
+  const hexCoordsLib = await (await ethers.getContractFactory("HexCoords")).deploy();
+  await hexCoordsLib.waitForDeployment();
+  const hexCoordsAddress = await hexCoordsLib.getAddress();
+  console.log("HexCoords library at", hexCoordsAddress);
+
   const contractNames = [
     "SimpleAccountFactory",
     "DirectActorAuthority",
@@ -80,6 +85,7 @@ async function main() {
     "Structures",
     "Voting",
     "AIGameMaster",
+    "ERC8004PlayerAgentRegistry",
     "MockERC8004Agent",
     "ERC8004AIGameMasterAdapter",
     "GameCore"
@@ -94,7 +100,10 @@ async function main() {
   };
 
   for (const name of contractNames) {
-    const Factory = await ethers.getContractFactory(name);
+    const Factory =
+      name === "GameCore"
+        ? await ethers.getContractFactory(name, { libraries: { HexCoords: hexCoordsAddress } })
+        : await ethers.getContractFactory(name);
     const constructorArgsFactory = constructorArgsByName[name];
     const constructorArgs = constructorArgsFactory ? constructorArgsFactory() : [];
     const contract = await Factory.deploy(...constructorArgs);
@@ -124,6 +133,10 @@ async function main() {
   const gameCore = await ethers.getContractAt("GameCore", deployed.GameCore.address);
   const voting = await ethers.getContractAt("Voting", deployed.Voting.address);
   const aiGameMaster = await ethers.getContractAt("AIGameMaster", deployed.AIGameMaster.address);
+  const erc8004PlayerAgentRegistry = await ethers.getContractAt(
+    "ERC8004PlayerAgentRegistry",
+    deployed.ERC8004PlayerAgentRegistry.address
+  );
 
   await (await sessionForwarder.setSponsorPool(deployed.LobbyManager.address)).wait();
   await (await sessionForwarder.setLobbyManager(deployed.LobbyManager.address)).wait();
@@ -141,6 +154,8 @@ async function main() {
   await (await gameCore.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
   await (await voting.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
   await (await aiGameMaster.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
+  await (await erc8004PlayerAgentRegistry.setStatsUpdater(deployed.LobbyManager.address)).wait();
+  await (await lobbyManager.setAgentStatsRegistry(deployed.ERC8004PlayerAgentRegistry.address)).wait();
 
   const outputDir = path.join(__dirname, "..", "deployments");
   fs.mkdirSync(outputDir, { recursive: true });

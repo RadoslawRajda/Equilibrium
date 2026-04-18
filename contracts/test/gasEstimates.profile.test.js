@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { TICKET_PRICE } = require("./gameplay.config.js");
+const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
 
 /**
  * Execution-layer gas only (GameCore / LobbyManager call inside `execute`).
@@ -22,7 +23,7 @@ const FEE_GWEI_SCENARIOS = [0, 1, 10, 30, 100];
 describe("Gas profile (estimateGas) — pessimistic planning", function () {
   it("records GameCore.bootstrapLobby gas vs map radius (heaviest cold path)", async function () {
     const LobbyManager = await ethers.getContractFactory("LobbyManager");
-    const GameCore = await ethers.getContractFactory("GameCore");
+    const GameCore = await getLinkedGameCoreFactory();
     const [host] = await ethers.getSigners();
     const seed = 777888999n;
 
@@ -40,10 +41,15 @@ describe("Gas profile (estimateGas) — pessimistic planning", function () {
       gasByRadius[r] = g;
     }
 
-    // Monotonic: larger map → more SSTOREs in _initializeMap
-    for (let i = 1; i < radii.length; i++) {
-      expect(gasByRadius[radii[i]]).to.be.gt(gasByRadius[radii[i - 1]]);
+    // Lazy map: bootstrap no longer materializes every hex; gas should be nearly flat vs radius.
+    let minG = gasByRadius[radii[0]];
+    let maxG = gasByRadius[radii[0]];
+    for (const r of radii) {
+      const g = gasByRadius[r];
+      if (g < minG) minG = g;
+      if (g > maxG) maxG = g;
     }
+    expect(maxG - minG).to.be.lt(60_000n);
 
     const pessimisticGas = gasByRadius[6];
     console.log("\n[bootstrapLobby] estimated gas by radius:", gasByRadius);
@@ -58,7 +64,7 @@ describe("Gas profile (estimateGas) — pessimistic planning", function () {
 
   it("compares steady-state txs after game is Running (single player, radius=4)", async function () {
     const LobbyManager = await ethers.getContractFactory("LobbyManager");
-    const GameCore = await ethers.getContractFactory("GameCore");
+    const GameCore = await getLinkedGameCoreFactory();
     const lobbyManager = await LobbyManager.deploy();
     await lobbyManager.waitForDeployment();
     const gameCore = await GameCore.deploy(await lobbyManager.getAddress());
@@ -77,6 +83,16 @@ describe("Gas profile (estimateGas) — pessimistic planning", function () {
     const center = "0,0";
     const gPick = await gameCore.connect(host).pickStartingHex.estimateGas(1n, center, 0, 0);
     await gameCore.connect(host).pickStartingHex(1n, center, 0, 0);
+
+    const z = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
+    await gameCore.connect(host).setLobbyGameMaster(1n, host.address);
+    await gameCore.connect(host).gameMasterAdjustResources(
+      1n,
+      host.address,
+      { food: 2n, wood: 0n, stone: 0n, ore: 0n, energy: 0n },
+      z,
+      "gas test bank food"
+    );
 
     const gProp = await gameCore.connect(host).createProposal.estimateGas(
       1n,

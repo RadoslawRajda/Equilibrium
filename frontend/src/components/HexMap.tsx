@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { EffectComposer, SMAA } from "@react-three/postprocessing";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { Box3, DoubleSide, SRGBColorSpace, TextureLoader, Vector3 } from "three";
+import { Box3, DoubleSide, Path, Shape, SRGBColorSpace, TextureLoader, Vector3 } from "three";
 import type { Group, Mesh, MeshStandardMaterial, Object3D, Texture } from "three";
 import type { HexTile } from "../types";
 import { BIOME_ASSET_KEY, MAP_3D_ASSETS, type Map3dAssetConfig, type Map3dAssetKey } from "../config/map3dAssets";
 import { generateTilePropPlan, type PropInstancePlan } from "../config/map3dProps";
 import { colorFromAddress } from "../utils/helpers/converters";
+import { biomeResourceMeta } from "./biomeResourceMeta";
 
 type Props = {
   hexes: HexTile[];
@@ -16,6 +17,23 @@ type Props = {
   selectedHex?: string;
   earthquakeTargets?: string[];
   onHexClick: (hexId: string) => void;
+  contextMenuActions?: HexContextMenuActions;
+};
+
+type HexContextMenuAction = {
+  visible?: boolean | ((hexId: string) => boolean);
+  enabled: boolean | ((hexId: string) => boolean);
+  label: string | ((hexId: string) => string);
+  hint?: string | ((hexId: string) => string);
+  details?: ReactNode | ((hexId: string) => ReactNode);
+  onClick: (hexId: string) => void;
+};
+
+type HexContextMenuActions = {
+  discover?: HexContextMenuAction;
+  build?: HexContextMenuAction;
+  upgrade?: HexContextMenuAction;
+  collect?: HexContextMenuAction;
 };
 
 const biomeStyle: Record<string, { base: string; edge: string; glow: string; resource: string }> = {
@@ -366,6 +384,7 @@ function HexTileMesh({
   propTexturesByUrl,
   debugProps,
   onHover,
+  onSelect,
   onOpenContext
 }: {
   hex: HexTile;
@@ -399,6 +418,8 @@ function HexTileMesh({
     () => (biomeAssetState?.status === "ready" && biomeAssetState.scene ? biomeAssetState.scene.clone(true) : null),
     [biomeAssetState?.scene, biomeAssetState?.status]
   );
+  const materialsRef = useRef<MeshStandardMaterial[]>([]);
+  const fallbackMaterialRef = useRef<MeshStandardMaterial>(null);
   const structureAssetInstance = useMemo(
     () =>
       level > 0 && structureAssetState?.status === "ready" && structureAssetState.scene
@@ -444,10 +465,42 @@ function HexTileMesh({
       topY: positionY + box.max.y * scaleY + 0.02
     };
   }, [baseHeight, biomeAssetConfig?.position, biomeAssetConfig?.scale, biomeAssetState?.scene]);
+  const tileTopY = baseHeight / 2 + normalizedBiomeTransform.topY;
+  const ownerBorderHeight = tileTopY / 3;
+  const ownerBorderBottomY = tileTopY * 0.75;
+  const ownerBorderCenterY = ownerBorderBottomY + ownerBorderHeight / 2;
+  const ownerBorderOuterRadius = HEX_RADIUS * 1.02;
+  const ownerBorderInnerRadius = HEX_RADIUS * 0.87;
+  const ownerBorderTopShape = useMemo(() => {
+    const outer = new Shape();
+    const capYaw = Math.PI / 6;
+    for (let i = 0; i < 6; i += 1) {
+      const angle = (Math.PI / 3) * i + capYaw;
+      const x = Math.cos(angle) * ownerBorderOuterRadius;
+      const y = Math.sin(angle) * ownerBorderOuterRadius;
+      if (i === 0) outer.moveTo(x, y);
+      else outer.lineTo(x, y);
+    }
+    outer.closePath();
+
+    const hole = new Path();
+    for (let i = 5; i >= 0; i -= 1) {
+      const angle = (Math.PI / 3) * i + capYaw;
+      const x = Math.cos(angle) * ownerBorderInnerRadius;
+      const y = Math.sin(angle) * ownerBorderInnerRadius;
+      if (i === 5) hole.moveTo(x, y);
+      else hole.lineTo(x, y);
+    }
+    hole.closePath();
+    outer.holes.push(hole);
+    return outer;
+  }, [ownerBorderInnerRadius, ownerBorderOuterRadius]);
 
   useEffect(() => {
     const texture = biomeTextureState?.status === "ready" ? biomeTextureState.texture : undefined;
-    if (!biomeAssetInstance || !texture) return;
+    if (!biomeAssetInstance) return;
+
+    const materials: MeshStandardMaterial[] = [];
 
     biomeAssetInstance.traverse((child) => {
       const mesh = child as Mesh;
@@ -455,38 +508,50 @@ function HexTileMesh({
       if (Array.isArray(mesh.material)) {
         mesh.material = mesh.material.map((material) => {
           const m = (material as MeshStandardMaterial).clone();
-          m.map = texture;
-          m.alphaMap = null;
-          m.transparent = false;
-          m.alphaTest = 0;
+          if (texture) {
+            m.map = texture;
+            m.alphaMap = null;
+            m.transparent = false;
+            m.alphaTest = 0;
+          }
           m.color.set("#ffffff");
           m.metalness = 0;
           m.roughness = 1;
-          m.emissiveMap = texture;
-          m.emissive.set("#ffffff");
-          m.emissiveIntensity = 0.55;
+          if (texture) {
+            m.emissiveMap = texture;
+          }
+          m.emissive.set(biome.glow);
+          m.emissiveIntensity = 0;
           m.side = DoubleSide;
           m.needsUpdate = true;
+          materials.push(m);
           return m;
         });
       } else {
         const material = (mesh.material as MeshStandardMaterial).clone();
-        material.map = texture;
-        material.alphaMap = null;
-        material.transparent = false;
-        material.alphaTest = 0;
+        if (texture) {
+          material.map = texture;
+          material.alphaMap = null;
+          material.transparent = false;
+          material.alphaTest = 0;
+        }
         material.color.set("#ffffff");
         material.metalness = 0;
         material.roughness = 1;
-        material.emissiveMap = texture;
-        material.emissive.set("#ffffff");
-        material.emissiveIntensity = 0.55;
+        if (texture) {
+          material.emissiveMap = texture;
+        }
+        material.emissive.set(biome.glow);
+        material.emissiveIntensity = 0;
         material.side = DoubleSide;
         material.needsUpdate = true;
         mesh.material = material;
+        materials.push(material);
       }
     });
-  }, [biomeAssetInstance, biomeTextureState?.status, biomeTextureState?.texture]);
+
+    materialsRef.current = materials;
+  }, [biome.glow, biomeAssetInstance, biomeTextureState?.status, biomeTextureState?.texture]);
 
   const targetY = selected ? 0.3 : hovered ? 0.15 : 0;
 
@@ -494,6 +559,26 @@ function HexTileMesh({
     if (!groupRef.current) return;
     groupRef.current.position.x = x + (quake ? Math.sin(clock.elapsedTime * 42) * 0.08 : 0);
     groupRef.current.position.y += (targetY - groupRef.current.position.y) * 0.15;
+
+    const pulseIntensity = selected ? 0.85 + Math.sin(clock.elapsedTime * 5) * 0.45 : hovered ? 0.2 : mine ? 0.1 : 0;
+    if (canUseBiomeAsset) {
+      const emissiveColor = selected || hovered ? biome.glow : mine ? "#56f0ff" : "#000000";
+      for (const mat of materialsRef.current) {
+        mat.emissive.set(emissiveColor);
+        if (mat.emissiveIntensity !== pulseIntensity) {
+          mat.emissiveIntensity = pulseIntensity;
+        }
+      }
+    } else if (fallbackMaterialRef.current) {
+      fallbackMaterialRef.current.emissive.set(selected || hovered ? biome.glow : mine ? "#56f0ff" : "#000000");
+      fallbackMaterialRef.current.emissiveIntensity = selected
+        ? 0.32 + Math.sin(clock.elapsedTime * 5) * 0.16
+        : hovered
+          ? 0.16
+          : mine
+            ? 0.08
+            : 0;
+    }
   });
 
   return (
@@ -518,6 +603,7 @@ function HexTileMesh({
           event.stopPropagation();
           const native = event.nativeEvent as MouseEvent;
           native.preventDefault();
+          onSelect(hex.id);
           onOpenContext(hex.id, native.clientX, native.clientY);
         }}
       >
@@ -532,10 +618,11 @@ function HexTileMesh({
           <mesh>
             <cylinderGeometry args={[HEX_RADIUS, HEX_RADIUS, baseHeight, 6]} />
             <meshStandardMaterial
+              ref={fallbackMaterialRef}
               color={biome.base}
               metalness={0.15}
               roughness={0.62}
-              emissive={selected ? "#ffffff" : hovered ? biome.glow : mine ? "#56f0ff" : "#000000"}
+              emissive={selected || hovered ? biome.glow : mine ? "#56f0ff" : "#000000"}
               emissiveIntensity={selected ? 0.2 : hovered ? 0.16 : mine ? 0.08 : 0}
             />
           </mesh>
@@ -565,23 +652,36 @@ function HexTileMesh({
           : null}
       </group>
 
-      <mesh position={[0, baseHeight + 0.03, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[HEX_RADIUS * 0.55, HEX_RADIUS * 0.86, 24]} />
-        <meshBasicMaterial color={selected ? "#ffffff" : hovered ? biome.edge : colorFromAddress(hex.owner)} transparent opacity={selected ? 0.95 : 0.8} />
-      </mesh>
-
-      {(hovered || selected) ? (
-        <mesh position={[0, baseHeight + 0.07, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[HEX_RADIUS * 0.9, HEX_RADIUS * 1.08, 28]} />
-          <meshBasicMaterial color={highlightColor} transparent opacity={highlightOpacity} />
-        </mesh>
-      ) : null}
-
       {hex.owner ? (
-        <mesh position={[0, baseHeight + 0.08, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[HEX_RADIUS * 0.93, 0.055, 8, 32]} />
-          <meshBasicMaterial color={ownerColor} transparent opacity={selected ? 1 : 0.74} />
-        </mesh>
+        <group position={[0, ownerBorderCenterY, 0]}>
+          <mesh>
+            <cylinderGeometry args={[ownerBorderOuterRadius, ownerBorderOuterRadius, ownerBorderHeight, 6, 1, true]} />
+            <meshBasicMaterial
+              color={ownerColor}
+              side={DoubleSide}
+              transparent
+              opacity={selected ? 0.95 : hovered ? 0.86 : 0.78}
+            />
+          </mesh>
+          <mesh>
+            <cylinderGeometry args={[ownerBorderInnerRadius, ownerBorderInnerRadius, ownerBorderHeight, 6, 1, true]} />
+            <meshBasicMaterial
+              color={ownerColor}
+              side={DoubleSide}
+              transparent
+              opacity={selected ? 0.95 : hovered ? 0.86 : 0.78}
+            />
+          </mesh>
+          <mesh position={[0, ownerBorderHeight / 2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <shapeGeometry args={[ownerBorderTopShape]} />
+            <meshBasicMaterial
+              color={ownerColor}
+              side={DoubleSide}
+              transparent
+              opacity={selected ? 0.95 : hovered ? 0.86 : 0.78}
+            />
+          </mesh>
+        </group>
       ) : null}
 
       {level > 0 ? (
@@ -624,8 +724,9 @@ function HexTileMesh({
   );
 }
 
-export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [] }: Props) {
+export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTargets = [], contextMenuActions }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const quakeSet = useMemo(() => new Set(earthquakeTargets), [earthquakeTargets]);
   const [hoveredHex, setHoveredHex] = useState<string | undefined>();
   const [contextMenu, setContextMenu] = useState<{ hexId: string; x: number; y: number } | null>(null);
@@ -716,9 +817,87 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
     if (!bounds) return;
     setContextMenu({
       hexId,
-      x: Math.max(12, Math.min(bounds.width - 220, clientX - bounds.left + 10)),
-      y: Math.max(12, Math.min(bounds.height - 140, clientY - bounds.top + 10))
+      x: clientX - bounds.left + 10,
+      y: clientY - bounds.top + 10
     });
+  };
+
+  useEffect(() => {
+    if (!contextMenu || !wrapRef.current || !contextMenuRef.current) return;
+    const bounds = wrapRef.current.getBoundingClientRect();
+    const menuBounds = contextMenuRef.current.getBoundingClientRect();
+    const margin = 12;
+    const nextX = Math.max(margin, Math.min(bounds.width - menuBounds.width - margin, contextMenu.x));
+    const nextY = Math.max(margin, Math.min(bounds.height - menuBounds.height - margin, contextMenu.y));
+    if (Math.abs(nextX - contextMenu.x) > 0.5 || Math.abs(nextY - contextMenu.y) > 0.5) {
+      setContextMenu((prev) => (prev ? { ...prev, x: nextX, y: nextY } : prev));
+    }
+  }, [contextMenu]);
+
+  const resolveActionVisible = (action: HexContextMenuAction | undefined, hexId: string) => {
+    if (!action) return false;
+    if (typeof action.visible === "function") return action.visible(hexId);
+    return action.visible ?? true;
+  };
+
+  const resolveActionEnabled = (action: HexContextMenuAction | undefined, hexId: string) => {
+    if (!action) return false;
+    return typeof action.enabled === "function" ? action.enabled(hexId) : action.enabled;
+  };
+
+  const resolveActionLabel = (action: HexContextMenuAction | undefined, hexId: string, fallback: string) => {
+    if (!action) return fallback;
+    return typeof action.label === "function" ? action.label(hexId) : action.label;
+  };
+
+  const resolveActionHint = (action: HexContextMenuAction | undefined, hexId: string) => {
+    if (!action?.hint) return "";
+    return typeof action.hint === "function" ? action.hint(hexId) : action.hint;
+  };
+
+  const resolveActionDetails = (action: HexContextMenuAction | undefined, hexId: string) => {
+    if (!action?.details) return null;
+    return typeof action.details === "function" ? action.details(hexId) : action.details;
+  };
+
+  const getVisibleActionCount = (hexId: string) => {
+    let count = 0;
+    if (resolveActionVisible(contextMenuActions?.discover, hexId)) count += 1;
+    if (resolveActionVisible(contextMenuActions?.build, hexId)) count += 1;
+    if (resolveActionVisible(contextMenuActions?.upgrade, hexId)) count += 1;
+    if (resolveActionVisible(contextMenuActions?.collect, hexId)) count += 1;
+    return count;
+  };
+
+  const renderContextAction = (
+    action: HexContextMenuAction | undefined,
+    hexId: string,
+    fallbackLabel: string,
+    actionKey: "discover" | "build" | "upgrade" | "collect"
+  ) => {
+    if (!resolveActionVisible(action, hexId)) return null;
+    const enabled = resolveActionEnabled(action, hexId);
+    const hint = resolveActionHint(action, hexId);
+    const details = resolveActionDetails(action, hexId);
+    const useDiscoverCostGrid = actionKey === "discover" && getVisibleActionCount(hexId) === 1;
+    return (
+      <div className="hex-context-menu__action-row" key={fallbackLabel}>
+        <span className="hex-context-menu__action-btn-wrap" title={!enabled && hint ? hint : undefined}>
+          <button
+            type="button"
+            className="hex-context-menu__action-btn"
+            disabled={!enabled}
+            onClick={() => {
+              action?.onClick(hexId);
+              setContextMenu(null);
+            }}
+          >
+            {resolveActionLabel(action, hexId, fallbackLabel)}
+          </button>
+        </span>
+        {details ? <div className={`hex-context-menu__cost-strip${useDiscoverCostGrid ? " hex-context-menu__cost-strip--grid2" : ""}`}>{details}</div> : null}
+      </div>
+    );
   };
 
   return (
@@ -764,7 +943,10 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
                 propTexturesByUrl={propTexturesByUrl}
                 debugProps={debugProps}
                 onHover={setHoveredHex}
-                onSelect={onHexClick}
+                onSelect={(hexId) => {
+                  onHexClick(hexId);
+                  setContextMenu(null);
+                }}
                 onOpenContext={openContextMenu}
               />
             );
@@ -792,25 +974,38 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, earthquakeTa
 
       {contextMenu && selectedTile ? (
         <div
-          className="hex-context-menu"
+          ref={contextMenuRef}
+          className={`hex-context-menu${getVisibleActionCount(selectedTile.id) === 0 ? " hex-context-menu--compact" : ""}`}
           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           onClick={(event) => event.stopPropagation()}
         >
           <p className="hex-context-menu__title">{selectedTile.id}</p>
-          <p>Biome: <strong>{selectedTile.biome}</strong></p>
-          <p>Resource: <strong>{biomeStyle[selectedTile.biome].resource}</strong></p>
-          <p>Owner: <strong>{selectedTile.owner ? `${selectedTile.owner.slice(0, 6)}…${selectedTile.owner.slice(-4)}` : "none"}</strong></p>
+          <p>
+            Biome: <strong style={{ color: biomeStyle[selectedTile.biome].edge }}>{selectedTile.biome}</strong>
+          </p>
+          <p>
+            Resource:{" "}
+            <strong className="hex-context-menu__resource-pill">
+              {(() => {
+                const { Icon, color, label } = biomeResourceMeta[selectedTile.biome];
+                return (
+                  <>
+                    <Icon size={13} color={color} aria-hidden />
+                    <span>{label}</span>
+                  </>
+                );
+              })()}
+            </strong>
+          </p>
+          <p>
+            Owner: <strong style={{ color: selectedTile.owner ? colorFromAddress(selectedTile.owner) : "#f3f7ff" }}>{selectedTile.owner ? (myAddress && selectedTile.owner.toLowerCase() === myAddress.toLowerCase() ? "You" : `${selectedTile.owner.slice(0, 6)}…${selectedTile.owner.slice(-4)}`) : "none"}</strong>
+          </p>
           <p>Structure: <strong>{selectedTile.structure ? `L${selectedTile.structure.level}` : "none"}</strong></p>
+          {renderContextAction(contextMenuActions?.discover, selectedTile.id, "Discover / Claim", "discover")}
+          {renderContextAction(contextMenuActions?.build, selectedTile.id, "Build lvl1", "build")}
+          {renderContextAction(contextMenuActions?.upgrade, selectedTile.id, "Upgrade", "upgrade")}
+          {renderContextAction(contextMenuActions?.collect, selectedTile.id, "Collect resources", "collect")}
           <div className="hex-context-menu__actions">
-            <button
-              type="button"
-              onClick={() => {
-                onHexClick(selectedTile.id);
-                setContextMenu(null);
-              }}
-            >
-              Select tile
-            </button>
             <button type="button" onClick={() => setContextMenu(null)}>
               Close
             </button>

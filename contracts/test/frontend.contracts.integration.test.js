@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
 
 const TICKET_PRICE = ethers.parseEther("5");
 
@@ -8,7 +9,7 @@ describe("Frontend-contracts integration", function () {
     const [host, player] = await ethers.getSigners();
 
     const LobbyManager = await ethers.getContractFactory("LobbyManager");
-    const GameCore = await ethers.getContractFactory("GameCore");
+    const GameCore = await getLinkedGameCoreFactory();
 
     const lobbyManager = await LobbyManager.deploy();
     await lobbyManager.waitForDeployment();
@@ -52,11 +53,15 @@ describe("Frontend-contracts integration", function () {
     const discoverCost = await gameCore.previewDiscoverCost(lobbyId, host.address);
     const hostResources = await gameCore.getPlayerResources(lobbyId, host.address);
 
-    expect(buildCost[0]).to.equal(5n);
-    expect(upgradeCost[0]).to.equal(14n);
-    expect(discoverCost[0]).to.equal(18n);
-    expect(hostResources[0]).to.equal(18n);
-    expect(hostResources[4]).to.equal(36n);
+    expect(buildCost[0]).to.equal(1n);
+    expect(upgradeCost[0]).to.equal(2n);
+    expect(discoverCost[0]).to.equal(0n);
+    expect(discoverCost[1]).to.equal(1n);
+    expect(hostResources[0]).to.equal(2n);
+    expect(hostResources[1]).to.equal(2n);
+    expect(hostResources[2]).to.equal(2n);
+    expect(hostResources[3]).to.equal(2n);
+    expect(hostResources[4]).to.equal(100n);
 
     const gcPlayers = await gameCore.getLobbyPlayers(lobbyId);
     expect(gcPlayers).to.deep.equal([host.address, player.address]);
