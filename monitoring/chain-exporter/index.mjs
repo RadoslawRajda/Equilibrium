@@ -7,7 +7,7 @@
  *   chain_head_block_timestamp                   – Unix timestamp of the latest block
  *   account_balance_eth{address,name}            – ETH balance of each monitored account
  *   lobbymanager_lobby_count                     – total lobbies ever created
- *   lobbymanager_lobby_status{lobby_id,status}   – 0=Waiting 1=ZeroRound 2=Active 3=Ended
+ *   lobbymanager_lobby_status{lobby_id,status}   – 0=OPEN 1=ACTIVE 2=COMPLETED 3=CANCELLED
  *   bundler_rpc_up                               – 1 if the ERC-4337 bundler RPC is responding
  *   bundler_executor_tx_count                    – nonce (tx count) of the bundler executor account
  *   erc4337_paymaster_deposit_eth{address,name}  – ETH deposited by paymaster on the EntryPoint
@@ -69,7 +69,7 @@ const lobbyCount = new Gauge({
 
 const lobbyStatus = new Gauge({
   name: "lobbymanager_lobby_status",
-  help: "Status of a specific lobby (0=Waiting 1=ZeroRound 2=Active 3=Ended)",
+  help: "Status of a specific lobby (0=OPEN 1=ACTIVE 2=COMPLETED 3=CANCELLED)",
   labelNames: ["lobby_id", "status"],
   registers: [register]
 });
@@ -280,12 +280,13 @@ async function poll() {
         const info = await client.readContract({
           address: lmAddress,
           abi: lmAbi,
-          functionName: "getLobbyInfo",
+          functionName: "getLobby",
           args: [BigInt(i)]
         });
-        // getLobbyInfo returns tuple — last field (index 3) is status enum
+        // getLobby returns tuple (host, name, createdAt, status, prizePool, playerCount, winner)
+        // status is at index 3: LobbyManager.LobbyStatus OPEN=0, ACTIVE=1, COMPLETED=2, CANCELLED=3
         const statusVal = Number(Array.isArray(info) ? info[3] ?? 0 : 0);
-        const statusNames = ["Waiting", "ZeroRound", "Active", "Ended"];
+        const statusNames = ["OPEN", "ACTIVE", "COMPLETED", "CANCELLED"];
         // Reset all status labels for this lobby to 0, set the active one to 1
         for (let s = 0; s < statusNames.length; s++) {
           lobbyStatus.set({ lobby_id: String(i), status: statusNames[s] }, s === statusVal ? 1 : 0);
