@@ -5,11 +5,12 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 
 import "../access/ActorAware.sol";
 import "./GameConfig.sol";
-import "../libraries/HexCoords.sol";
-import "../lobby/ILobbyManagerPrize.sol";
-import "../lobby/ILobbyManagerSync.sol";
+import "./libraries/HexCoords.sol";
+import "./ILobbyManagerPrize.sol";
+import "./ILobbyManagerSync.sol";
+import { IGameCorePlayerStatus } from "./LobbyManager.sol";
 
-contract GameCore is ActorAware {
+contract GameCore is ActorAware, IGameCorePlayerStatus {
     using Strings for uint256;
 
     enum Status {
@@ -1104,8 +1105,25 @@ contract GameCore is ActorAware {
     }
 
     function isPlayerAlive(uint256 lobbyId, address player) external view returns (bool) {
-        Player storage p = lobbies[lobbyId].playerState[player];
-        return p.exists && p.alive;
+        Lobby storage lobby = lobbies[lobbyId];
+        if (!lobby.playerState[player].exists) {
+            return false;
+        }
+        return lobby.playerState[player].alive;
+    }
+
+    function getAliveStatus(uint256 lobbyId, address[] calldata _players) external view returns (bool[] memory) {
+        Lobby storage lobby = lobbies[lobbyId];
+        bool[] memory statuses = new bool[](_players.length);
+        for (uint256 i = 0; i < _players.length; i++) {
+            address player = _players[i];
+            if (lobby.playerState[player].exists && lobby.playerState[player].alive) {
+                statuses[i] = true;
+            } else {
+                statuses[i] = false;
+            }
+        }
+        return statuses;
     }
 
     function getTradeCount(uint256 lobbyId) external view returns (uint256) {

@@ -15,6 +15,7 @@ interface IExperienceStatsRegistry {
     function recordGameResult(uint256 lobbyId, address[] calldata players, address winner) external;
 
     function recordLobbyExit(uint256 lobbyId, address player) external;
+    function recordLobbyExits(uint256 lobbyId, address[] calldata players) external;
 }
 
 interface IRegisteredAgentLookup {
@@ -23,6 +24,7 @@ interface IRegisteredAgentLookup {
 
 interface IGameCorePlayerStatus {
     function isPlayerAlive(uint256 lobbyId, address player) external view returns (bool);
+    function getAliveStatus(uint256 lobbyId, address[] calldata players) external view returns (bool[] memory);
 }
 
 contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, ILobbyManagerPrize, ILobbyManagerSync {
@@ -430,22 +432,44 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
         if (experienceStatsRegistry == address(0) || gameCore == address(0)) {
             return;
         }
+        require(players.length <= 8, "Too many players limiting gas");
+
+        address[] memory roster = new address[](players.length);
         for (uint256 i = 0; i < players.length; i++) {
-            address player = players[i];
-            bool alive = true;
-            try IGameCorePlayerStatus(gameCore).isPlayerAlive(lobbyId, player) returns (bool status) {
-                alive = status;
-            } catch {
-                continue;
+            roster[i] = players[i];
+        }
+
+        bool[] memory aliveStatus = new bool[](players.length);
+        try IGameCorePlayerStatus(gameCore).getAliveStatus(lobbyId, roster) returns (bool[] memory statuses) {
+            aliveStatus = statuses;
+        } catch {
+            return;
+        }
+
+        uint256 deadCount = 0;
+        address[] memory tempDead = new address[](players.length);
+        for (uint256 i = 0; i < players.length; i++) {
+            if (!aliveStatus[i]) {
+                tempDead[deadCount] = roster[i];
+                deadCount++;
             }
-            if (!alive) {
-                _recordExperienceStatsExit(lobbyId, player);
+        }
+
+        if (deadCount > 0) {
+            address[] memory deadPlayers = new address[](deadCount);
+            for (uint256 i = 0; i < deadCount; i++) {
+                deadPlayers[i] = tempDead[i];
+            }
+            try IExperienceStatsRegistry(experienceStatsRegistry).recordLobbyExits(lobbyId, deadPlayers) {
+                // no-op
+            } catch {
+                // no-op
             }
         }
     }
 
     /// @notice After `GameCore.concede`, player can sync `ExperienceStats` exit penalty in a separate tx.
-    function syncConcedeExitPenalty(uint256 _lobbyId) external {
+    function syncConcedeExitPenalty(uint256 _lobbyId) external nonReentrant {
         require(gameCore != address(0), "GameCore not set");
         Lobby storage lobby = lobbies[_lobbyId];
         require(
@@ -460,7 +484,7 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
     }
 
     /// @notice While lobby is OPEN, a non-host player may leave and reclaim an equal share of `sessionSponsorPool` still held here. EntryPoint deposits are not clawed back.
-    function leaveOpenLobby(uint256 _lobbyId) external {
+    function leaveOpenLobby(uint256 _lobbyId) external nonReentrant {
         Lobby storage lobby = lobbies[_lobbyId];
         address player = _actor();
         require(lobby.status == LobbyStatus.OPEN, "Lobby not open");
@@ -481,13 +505,14 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
 
         _removeOpenLobbyPlayer(lobby, player);
         lobby.hasTicket[player] = false;
-        _recordExperienceStatsExit(_lobbyId, player);
 
         emit PlayerLeftOpenLobby(_lobbyId, player, credited);
+
+        _recordExperienceStatsExit(_lobbyId, player);
     }
 
     /// @notice While lobby is OPEN, the host may remove a non-host player (same refund as `leaveOpenLobby`).
-    function hostKickOpenLobbyPlayer(uint256 _lobbyId, address kicked) external {
+    function hostKickOpenLobbyPlayer(uint256 _lobbyId, address kicked) external nonReentrant {
         Lobby storage lobby = lobbies[_lobbyId];
         address hostAddr = _actor();
         require(hostAddr == lobby.host, "Only host");
@@ -516,6 +541,8 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
         }
 
         emit PlayerKickedOpenLobby(_lobbyId, kicked, credited);
+
+        _recordExperienceStatsExit(_lobbyId, kicked);
     }
 
     function _removeOpenLobbyPlayer(Lobby storage lobby, address player) internal {

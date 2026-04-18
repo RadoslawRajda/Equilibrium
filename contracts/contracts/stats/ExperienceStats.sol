@@ -3,7 +3,10 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
-contract ExperienceStats is Ownable2Step {
+import { IAgentStatsRegistryBase } from "./ERC8004PlayerAgentRegistry.sol";
+import { IExperienceStatsRegistry } from "./LobbyManager.sol";
+
+contract ExperienceStats is Ownable2Step, IAgentStatsRegistryBase, IExperienceStatsRegistry {
     struct PlayerStats {
         uint256 experiencePoints;
         uint256 gamesPlayed;
@@ -120,6 +123,16 @@ contract ExperienceStats is Ownable2Step {
     }
 
     function recordLobbyExit(uint256 lobbyId, address player) external onlyStatsUpdater {
+        _recordLobbyExit(lobbyId, player);
+    }
+
+    function recordLobbyExits(uint256 lobbyId, address[] calldata players) external onlyStatsUpdater {
+        for (uint256 i = 0; i < players.length; i++) {
+            _recordLobbyExit(lobbyId, players[i]);
+        }
+    }
+
+    function _recordLobbyExit(uint256 lobbyId, address player) internal {
         if (player == address(0)) {
             return;
         }
