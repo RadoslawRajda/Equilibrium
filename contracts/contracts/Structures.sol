@@ -26,10 +26,11 @@ contract Structures is Ownable {
 
     constructor() Ownable(msg.sender) {}
 
-    function build(bytes32 hexId, address owner, Biome biome) external onlyOwner {
+    function build(bytes32 hexId, address structureOwner, Biome biome) external onlyOwner {
+        require(structureOwner != address(0), "Structure owner required");
         require(!structures[hexId].exists, "Structure already exists");
-        structures[hexId] = StructureState(owner, 1, true, biome);
-        emit StructureBuilt(hexId, owner, 1, biome);
+        structures[hexId] = StructureState(structureOwner, 1, true, biome);
+        emit StructureBuilt(hexId, structureOwner, 1, biome);
     }
 
     function upgrade(bytes32 hexId) external onlyOwner {

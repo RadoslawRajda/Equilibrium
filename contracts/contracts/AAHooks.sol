@@ -37,11 +37,14 @@ contract LobbyPaymasterHook is Ownable2Step, ReentrancyGuard {
     }
 
     constructor(address authority, address initialEntryPoint) Ownable(msg.sender) {
+        require(authority != address(0), "Authority address required");
+        require(initialEntryPoint != address(0), "EntryPoint address required");
         sessionAuthority = ISessionAuthority(authority);
         entryPoint = initialEntryPoint;
     }
 
     function setEntryPoint(address newEntryPoint) external onlyOwner {
+        require(newEntryPoint != address(0), "EntryPoint address required");
         emit EntryPointUpdated(entryPoint, newEntryPoint);
         entryPoint = newEntryPoint;
     }
@@ -52,13 +55,15 @@ contract LobbyPaymasterHook is Ownable2Step, ReentrancyGuard {
     }
 
     function setGasSponsor(address newSponsor) external onlyOwner {
+        require(newSponsor != address(0), "Sponsor address required");
         emit GasSponsorUpdated(gasSponsor, newSponsor);
         gasSponsor = newSponsor;
     }
 
     /// @notice Called by `LobbySessionPaymaster` after a sponsored UserOp to refund the paymaster from the lobby pool.
     function reimburseSessionGas(address sessionKey, uint256 amount, address payable receiver) external onlyGasSponsor nonReentrant {
-        (, uint256 lobbyId, , , ) = sessionAuthority.sessionPolicies(sessionKey);
+        (address a, uint256 lobbyId, uint64 e, uint128 m, bool ac) = sessionAuthority.sessionPolicies(sessionKey);
+        a; e; m; ac;
         sessionAuthority.sponsorSessionAction(sessionKey, amount, receiver);
         emit UserOperationSponsored(sessionKey, lobbyId, amount, receiver);
     }
@@ -89,7 +94,8 @@ contract LobbyPaymasterHook is Ownable2Step, ReentrancyGuard {
         onlyEntryPoint
         nonReentrant
     {
-        (, uint256 lobbyId, , , ) = sessionAuthority.sessionPolicies(sessionKey);
+        (address a, uint256 lobbyId, uint64 e, uint128 m, bool ac) = sessionAuthority.sessionPolicies(sessionKey);
+        a; e; m; ac;
         sessionAuthority.sponsorSessionAction(sessionKey, amount, receiver);
         emit UserOperationSponsored(sessionKey, lobbyId, amount, receiver);
     }

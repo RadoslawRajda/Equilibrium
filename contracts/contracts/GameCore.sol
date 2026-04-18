@@ -217,11 +217,8 @@ contract GameCore is ActorAware {
         _clampBasicResources(player.resources);
     }
 
-    function _exploreCost(uint256 ownedCount) internal pure returns (Resources memory cost) {
-        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(ownedCount);
-    }
 
-    function _hasAdjacentOwnedHex(Lobby storage lobby, int256 q, int256 r, address owner) internal view returns (bool) {
+    function _hasAdjacentOwnedHex(Lobby storage lobby, int256 q, int256 r, address hexOwner) internal view returns (bool) {
         int256[2][6] memory directions = [
             [int256(1), int256(0)],
             [int256(1), int256(-1)],
@@ -235,7 +232,7 @@ contract GameCore is ActorAware {
             int256 neighborQ = q + directions[i][0];
             int256 neighborR = r + directions[i][1];
             HexTile storage neighbor = lobby.hexes[keccak256(bytes(_hexId(neighborQ, neighborR)))];
-            if (neighbor.owner == owner) {
+            if (neighbor.owner == hexOwner) {
                 return true;
             }
         }
@@ -285,7 +282,8 @@ contract GameCore is ActorAware {
     }
 
     function _payBuildCost(Player storage player) internal {
-        (uint256 foodCost, uint256 woodCost, uint256 stoneCost,, uint256 energyCost) = GameConfig.buildCost();
+        (uint256 foodCost, uint256 woodCost, uint256 stoneCost, uint256 oreCost, uint256 energyCost) = GameConfig.buildCost();
+        oreCost;
         require(player.resources.food >= foodCost, "Not enough food");
         require(player.resources.wood >= woodCost, "Not enough wood");
         require(player.resources.stone >= stoneCost, "Not enough stone");
@@ -297,7 +295,8 @@ contract GameCore is ActorAware {
     }
 
     function _payUpgradeCost(Player storage player) internal {
-        (uint256 foodCost,, uint256 stoneCost, uint256 oreCost, uint256 energyCost) = GameConfig.upgradeCost();
+        (uint256 foodCost, uint256 woodCost, uint256 stoneCost, uint256 oreCost, uint256 energyCost) = GameConfig.upgradeCost();
+        woodCost;
         require(player.resources.food >= foodCost, "Not enough food");
         require(player.resources.stone >= stoneCost, "Not enough stone");
         require(player.resources.ore >= oreCost, "Not enough ore");
@@ -402,7 +401,7 @@ contract GameCore is ActorAware {
     }
 
     function _regenPlayerEnergy(Player storage player, uint256 energyGain) internal {
-        if (!player.exists || !player.alive || energyGain == 0) {
+        if (!player.exists || !player.alive || energyGain <= 0) {
             return;
         }
         uint256 maxEnergy = GameConfig.energyMax();
@@ -414,7 +413,7 @@ contract GameCore is ActorAware {
     }
 
     function _applyEnergyRegenForAdvancedRounds(Lobby storage lobby, uint256 roundsAdvanced) internal {
-        if (roundsAdvanced == 0) {
+        if (roundsAdvanced <= 0) {
             return;
         }
         uint256 perRoundRegen = GameConfig.energyRegenPerRound();
@@ -475,8 +474,8 @@ contract GameCore is ActorAware {
         if (lobby.status != Status.Running) {
             return;
         }
-        uint256 aliveCount;
-        address lastAlive;
+        uint256 aliveCount = 0;
+        address lastAlive = address(0);
         for (uint256 i = 0; i < lobby.players.length; i++) {
             address a = lobby.players[i];
             if (lobby.playerState[a].exists && lobby.playerState[a].alive) {
@@ -565,10 +564,21 @@ contract GameCore is ActorAware {
         Lobby storage lobby = lobbies[lobbyId];
         require(lm.hasTicket(lobbyId, lobby.host), "Host has no ticket");
 
+        address[] memory holders = lm.getLobbyPlayers(lobbyId);
+        require(holders.length <= 8, "Too many holders");
+        require(lobby.players.length <= 8, "Too many players");
+
         uint256 idx = 0;
         while (idx < lobby.players.length) {
             address p = lobby.players[idx];
-            if (!lm.hasTicket(lobbyId, p)) {
+            bool hasIt = false;
+            for (uint256 i = 0; i < holders.length; i++) {
+                if (holders[i] == p) {
+                    hasIt = true;
+                    break;
+                }
+            }
+            if (!hasIt) {
                 require(p != lobby.host, "Host lost lobby ticket");
                 _removeWaitingLobbyPlayer(lobby, p);
             } else {
@@ -576,20 +586,15 @@ contract GameCore is ActorAware {
             }
         }
 
-        address[] memory holders = lm.getLobbyPlayers(lobbyId);
         for (uint256 i = 0; i < holders.length; i++) {
             address p = holders[i];
             if (p == address(0)) {
                 continue;
             }
-            if (!lm.hasTicket(lobbyId, p)) {
-                continue;
+            if (!lobby.playerState[p].exists) {
+                lobby.players.push(p);
+                lobby.playerState[p] = _createPlayerState();
             }
-            if (lobby.playerState[p].exists) {
-                continue;
-            }
-            lobby.players.push(p);
-            lobby.playerState[p] = _createPlayerState();
         }
     }
 
@@ -641,8 +646,8 @@ contract GameCore is ActorAware {
         require(player.ownedHexCount > 0, "No owned hexes");
         require(_hasAdjacentOwnedHex(lobby, tile.q, tile.r, playerAddress), "Must be adjacent");
 
-        Resources memory cost;
-        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(player.ownedHexCount);
+        (uint256 foodC, uint256 woodC, uint256 stoneC, uint256 oreC, uint256 energyC) = GameConfig.discoverCost(player.ownedHexCount);
+        Resources memory cost = Resources(foodC, woodC, stoneC, oreC, energyC);
         _subtractResources(player.resources, cost);
 
         tile.owner = playerAddress;
@@ -970,18 +975,18 @@ contract GameCore is ActorAware {
         Lobby storage lobby = lobbies[lobbyId];
         _requireNotEnded(lobby);
         require(lobby.status == Status.Running, "Game not running");
-        Player storage player = lobby.playerState[_actor()];
+        address playerAddress = _actor();
+        Player storage player = lobby.playerState[playerAddress];
         require(player.exists && player.alive, "Player not active");
-        Resources memory cost;
-        (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.craftAlloyCost();
+        (uint256 foodC, uint256 woodC, uint256 stoneC, uint256 oreC, uint256 energyC) = GameConfig.craftAlloyCost();
+        Resources memory cost = Resources(foodC, woodC, stoneC, oreC, energyC);
         _subtractResources(player.resources, cost);
         player.craftedGoods += GameConfig.craftAlloyYield();
-        emit GoodsCrafted(lobbyId, _actor(), player.craftedGoods);
+        emit GoodsCrafted(lobbyId, playerAddress, player.craftedGoods);
         if (player.craftedGoods >= GameConfig.victoryGoodsThreshold()) {
-            address w = _actor();
             lobby.status = Status.Ended;
-            emit Victory(lobbyId, w);
-            _notifyLobbySettled(lobbyId, w);
+            emit Victory(lobbyId, playerAddress);
+            _notifyLobbySettled(lobbyId, playerAddress);
         }
     }
 
@@ -1055,7 +1060,7 @@ contract GameCore is ActorAware {
         int256 q,
         int256 r,
         Biome biome,
-        address owner,
+        address tileOwner,
         bool discovered,
         bool structureExists,
         uint8 structureLevel,
