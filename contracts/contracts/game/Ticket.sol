@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 
-import "./ActorAware.sol";
+import "../access/ActorAware.sol";
 
 contract Ticket is ERC721, ActorAware {
     uint256 public constant TICKET_PRICE = 0.01 ether;

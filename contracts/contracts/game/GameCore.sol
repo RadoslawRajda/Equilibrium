@@ -3,11 +3,11 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-import "./ActorAware.sol";
+import "../access/ActorAware.sol";
 import "./GameConfig.sol";
-import "./libraries/HexCoords.sol";
-import "./ILobbyManagerPrize.sol";
-import "./ILobbyManagerSync.sol";
+import "../libraries/HexCoords.sol";
+import "../lobby/ILobbyManagerPrize.sol";
+import "../lobby/ILobbyManagerSync.sol";
 
 contract GameCore is ActorAware {
     using Strings for uint256;
