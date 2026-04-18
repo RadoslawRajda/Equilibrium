@@ -79,11 +79,13 @@ services:
           --network-name ganache \
           --host 0.0.0.0 \
           --port 4337 \
+          --metrics-port 4338 \
           --min-balance 0 \
           --safe-mode false
     restart: on-failure
     ports:
       - "4337:4337"
+      - "4338:4338"
     volumes:
       - ./contracts/deployments:/contracts/deployments:ro
     depends_on:
@@ -186,11 +188,15 @@ services:
       DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
       POLL_MS: "10000"
       MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      BUNDLER_RPC_URL: http://paymaster:4337
+      BUNDLER_EXECUTOR_KEY: ${BUNDLER_EXECUTOR_KEY:-0xc87509a1c067bbde78beb793e6fa76530b6382a4c0241e5e4a9ec0a0f44dc0d3}
+      BUNDLER_UTILITY_KEY: ${BUNDLER_UTILITY_KEY:-0xae6ae8e5ccbfb04590405997ee2d52d2b330726137b875053c36d94e974d162f}
     volumes:
       - ./contracts/deployments:/contracts/deployments:ro
     depends_on:
       - ganache
       - hardhat
+      - paymaster
 
   prometheus:
     image: prom/prometheus:latest

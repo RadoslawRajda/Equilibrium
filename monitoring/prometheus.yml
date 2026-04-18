@@ -19,8 +19,14 @@ scrape_configs:
       - targets: ["assistant-agent:4060"]
     metrics_path: /metrics
 
-  # On-chain exporter
+  # On-chain exporter (ETH balances, lobby state, ERC-4337 UserOp events, bundler health)
   - job_name: "chain-exporter"
     static_configs:
       - targets: ["chain-exporter:9100"]
+    metrics_path: /metrics
+
+  # Alto bundler native Prometheus metrics (UserOp throughput, mempool, gas, errors)
+  - job_name: "alto-bundler"
+    static_configs:
+      - targets: ["paymaster:4338"]
     metrics_path: /metrics
