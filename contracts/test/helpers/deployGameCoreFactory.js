@@ -6,7 +6,7 @@ async function getLinkedGameCoreFactory() {
   const lib = await Lib.deploy();
   await lib.waitForDeployment();
   const hexCoordsAddress = await lib.getAddress();
-  return ethers.getContractFactory("GameCore", {
+  return ethers.getContractFactory("GameCoreHarness", {
     libraries: {
       HexCoords: hexCoordsAddress
     }

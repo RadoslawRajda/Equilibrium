@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { PlusCircle, Wallet, LogOut } from "lucide-react";
+import { PlusCircle, Wallet, LogOut, Trophy, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { formatEther } from "viem";
 
@@ -19,6 +19,7 @@ type Props = {
   onCreate: (radius: number) => void;
   onOpen: (lobbyId: string) => void;
   onDisconnect: () => void;
+  onOpenLeaderboard: () => void;
   deployHint?: string | null;
   /** Human-readable ticket price (e.g. from LobbyManager.TICKET_PRICE) */
   ticketPriceLabel?: string;
@@ -34,6 +35,7 @@ export function Lobby({
   onCreate,
   onOpen,
   onDisconnect,
+  onOpenLeaderboard,
   deployHint,
   ticketPriceLabel = "5",
   claimableWei,
@@ -45,8 +47,13 @@ export function Lobby({
   return (
     <div className="lobby-shell">
       <header className="lobby-header">
+        <div style={{ width: "100%", display: "flex", justifyContent: "flex-start", marginBottom: "0.75rem" }}>
+          <button type="button" onClick={onOpenLeaderboard}>
+            <Trophy size={16} /> Leaderboard
+          </button>
+        </div>
         <h1>Equilibrium</h1>
-        <p>Strategic economy game with an AI Game Master</p>
+        <p>Strategic economy game with AI Agents</p>
       </header>
 
       <div className="wallet-strip">
@@ -78,12 +85,15 @@ export function Lobby({
       <section className="lobby-actions">
         <label className="lobby-radius-picker">
           <span>Map radius</span>
-          <select value={radius} onChange={(event) => setRadius(Number(event.target.value))}>
-            <option value={3}>3</option>
-            <option value={4}>4</option>
-            <option value={5}>5</option>
-            <option value={6}>6</option>
-          </select>
+          <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+            <select value={radius} onChange={(event) => setRadius(Number(event.target.value))} style={{ paddingRight: '32px' }}>
+              <option value={3}>3</option>
+              <option value={4}>4</option>
+              <option value={5}>5</option>
+              <option value={6}>6</option>
+            </select>
+            <ChevronDown size={16} style={{ position: 'absolute', right: '42px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', opacity: 0.6 }} />
+          </div>
         </label>
         <motion.button whileTap={{ scale: 0.96 }} whileHover={{ scale: 1.04 }} onClick={() => onCreate(radius)} disabled={creating}>
           <PlusCircle size={18} /> New Lobby ({ticketPriceLabel} ETH)

@@ -3,13 +3,14 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-import "./ActorAware.sol";
+import "../access/ActorAware.sol";
 import "./GameConfig.sol";
-import "./libraries/HexCoords.sol";
-import "./ILobbyManagerPrize.sol";
-import "./ILobbyManagerSync.sol";
+import "../libraries/HexCoords.sol";
+import "../lobby/ILobbyManagerPrize.sol";
+import "../lobby/ILobbyManagerSync.sol";
+import { IGameCorePlayerStatus } from "../lobby/LobbyManager.sol";
 
-contract GameCore is ActorAware {
+contract GameCore is ActorAware, IGameCorePlayerStatus {
     using Strings for uint256;
 
     enum Status {
@@ -102,11 +103,9 @@ contract GameCore is ActorAware {
         Proposal[] proposals;
         /// @dev keccak256(abi.encodePacked(proposalId, voter)) -> has voted
         mapping(bytes32 => bool) proposalVoteCast;
-        /// @dev ERC-8004 adapter or trusted bot; host-assigned. Applies bounded grants/takes via `gameMasterAdjustResources`.
-        address gameMasterExecutor;
     }
 
-    mapping(uint256 => Lobby) private lobbies;
+    mapping(uint256 => Lobby) internal lobbies;
     uint256 public lobbyCount;
 
     event LobbyBootstrapped(uint256 indexed lobbyId, address indexed host, uint256 mapSeed, uint8 mapRadius);
@@ -132,8 +131,6 @@ contract GameCore is ActorAware {
         uint256 buyAmount
     );
     event GameEnded(uint256 indexed lobbyId, uint256 indexed proposalId);
-    event GameMasterAdjusted(uint256 indexed lobbyId, address indexed player, string narrative);
-    event LobbyGameMasterSet(uint256 indexed lobbyId, address indexed executor);
     event Victory(uint256 indexed lobbyId, address indexed winner);
     event GoodsCrafted(uint256 indexed lobbyId, address indexed player, uint256 newTotal);
     event PlayerConceded(uint256 indexed lobbyId, address indexed player);
@@ -896,38 +893,6 @@ contract GameCore is ActorAware {
         return proposal.passed;
     }
 
-    function setLobbyGameMaster(uint256 lobbyId, address executor) external {
-        Lobby storage lobby = lobbies[lobbyId];
-        require(_actor() == lobby.host, "Only host");
-        lobby.gameMasterExecutor = executor;
-        emit LobbyGameMasterSet(lobbyId, executor);
-    }
-
-    /// @dev Called by `lobbyGameMasterExecutor` (e.g. ERC-8004 adapter). Grants/takes are bounded on mint side.
-    function gameMasterAdjustResources(
-        uint256 lobbyId,
-        address player,
-        Resources calldata grant,
-        Resources calldata take,
-        string calldata narrative
-    ) external {
-        Lobby storage lobby = lobbies[lobbyId];
-        require(msg.sender == lobby.gameMasterExecutor, "Not game master executor");
-        _requireNotEnded(lobby);
-        require(lobby.status == Status.Running || lobby.status == Status.ZeroRound, "Bad status");
-        uint256 cap = GameConfig.gameMasterMaxGrantPerResource();
-        require(grant.food <= cap && grant.wood <= cap && grant.stone <= cap && grant.ore <= cap && grant.energy <= cap, "Grant cap exceeded");
-        Player storage p = lobby.playerState[player];
-        require(p.exists, "Unknown player");
-        _subtractResources(p.resources, take);
-        _addResources(p.resources, grant);
-        emit GameMasterAdjusted(lobbyId, player, narrative);
-    }
-
-    function getLobbyGameMaster(uint256 lobbyId) external view returns (address) {
-        return lobbies[lobbyId].gameMasterExecutor;
-    }
-
     function getBankTradeParams() external pure returns (uint256 giveAmount, uint256 receiveAmount) {
         return (GameConfig.bankTradeGiveAmount(), GameConfig.bankTradeReceiveAmount());
     }
@@ -1104,8 +1069,25 @@ contract GameCore is ActorAware {
     }
 
     function isPlayerAlive(uint256 lobbyId, address player) external view returns (bool) {
-        Player storage p = lobbies[lobbyId].playerState[player];
-        return p.exists && p.alive;
+        Lobby storage lobby = lobbies[lobbyId];
+        if (!lobby.playerState[player].exists) {
+            return false;
+        }
+        return lobby.playerState[player].alive;
+    }
+
+    function getAliveStatus(uint256 lobbyId, address[] calldata _players) external view returns (bool[] memory) {
+        Lobby storage lobby = lobbies[lobbyId];
+        bool[] memory statuses = new bool[](_players.length);
+        for (uint256 i = 0; i < _players.length; i++) {
+            address player = _players[i];
+            if (lobby.playerState[player].exists && lobby.playerState[player].alive) {
+                statuses[i] = true;
+            } else {
+                statuses[i] = false;
+            }
+        }
+        return statuses;
     }
 
     function getTradeCount(uint256 lobbyId) external view returns (uint256) {
