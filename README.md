@@ -260,6 +260,18 @@ npx hardhat test
 npx hardhat run scripts/deploy.js --network ganache
 ```
 
+## Experience Points + Leaderboard (Issue #39)
+
+Po deployu lokalnym skrypt automatycznie wykonuje konfiguracje XP:
+
+- wdraza `ExperienceStats`,
+- ustawia `ExperienceStats.statsUpdater = LobbyManager`,
+- ustawia `LobbyManager.experienceStatsRegistry = ExperienceStats`.
+
+Frontend odczytuje leaderboard pod sciezka `/leaderboard` i pobiera dane z `ExperienceStats` porcjami (`listPlayers(offset, max)`).
+
+Po tej synchronizacji odswiez frontend dev server.
+
 ## Pliki generowane i loklane artefakty
 
 W repo wystepuja pliki generowane przy buildzie lub uruchomieniu stacku. W szczegolnosci:

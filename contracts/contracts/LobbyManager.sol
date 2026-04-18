@@ -11,8 +11,18 @@ interface IAgentStatsRegistry {
     function recordLobbyResult(uint256 lobbyId, address[] calldata players, address winner) external;
 }
 
+interface IExperienceStatsRegistry {
+    function recordGameResult(uint256 lobbyId, address[] calldata players, address winner) external;
+
+    function recordLobbyExit(uint256 lobbyId, address player) external;
+}
+
 interface IRegisteredAgentLookup {
     function getAgentByController(address controller) external view returns (address);
+}
+
+interface IGameCorePlayerStatus {
+    function isPlayerAlive(uint256 lobbyId, address player) external view returns (bool);
 }
 
 contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, ILobbyManagerPrize, ILobbyManagerSync {
@@ -52,6 +62,7 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
     /// @dev Set once after GameCore deployment; only that contract may call `notifyGameSettled`.
     address public gameCore;
     address public agentStatsRegistry;
+    address public experienceStatsRegistry;
 
     event LobbyCreated(uint256 indexed lobbyId, address indexed host, string name);
     event TicketBought(uint256 indexed lobbyId, address indexed player);
@@ -74,6 +85,7 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
         uint128 maxSponsoredWei
     );
     event AgentStatsRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+    event ExperienceStatsRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
     event LobbyAgentInvited(uint256 indexed lobbyId, address indexed controller, address indexed host);
     event LobbyAgentInviteCleared(uint256 indexed lobbyId, address indexed controller);
 
@@ -89,6 +101,12 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
         require(newRegistry != address(0), "Registry address required");
         emit AgentStatsRegistryUpdated(agentStatsRegistry, newRegistry);
         agentStatsRegistry = newRegistry;
+    }
+
+    function setExperienceStatsRegistry(address newRegistry) external onlyOwner {
+        require(newRegistry != address(0), "Registry address required");
+        emit ExperienceStatsRegistryUpdated(experienceStatsRegistry, newRegistry);
+        experienceStatsRegistry = newRegistry;
     }
 
     function setSessionPolicyRegistry(address newRegistry) external onlyOwner {
@@ -327,10 +345,14 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
         if (winner != address(0)) {
             require(lobby.hasTicket[winner], "Winner must have ticket");
             lobby.winner = winner;
+            _recordConcededPlayersExits(_lobbyId, lobby.players);
             _recordAgentStats(_lobbyId, winner, lobby.players);
+            _recordExperienceStatsResult(_lobbyId, winner, lobby.players);
         } else {
             lobby.winner = address(0);
+            _recordConcededPlayersExits(_lobbyId, lobby.players);
             _recordAgentStats(_lobbyId, address(0), lobby.players);
+            _recordExperienceStatsResult(_lobbyId, address(0), lobby.players);
         }
 
         emit GameCompleted(_lobbyId, winner, 0);
@@ -346,7 +368,9 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
 
         lobby.status = LobbyStatus.COMPLETED;
         lobby.winner = _winner;
+        _recordConcededPlayersExits(_lobbyId, lobby.players);
         _recordAgentStats(_lobbyId, _winner, lobby.players);
+        _recordExperienceStatsResult(_lobbyId, _winner, lobby.players);
 
         emit GameCompleted(_lobbyId, _winner, 0);
     }
@@ -369,7 +393,70 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
         for (uint256 i = 0; i < players.length; i++) {
             roster[i] = players[i];
         }
-        IAgentStatsRegistry(agentStatsRegistry).recordLobbyResult(lobbyId, roster, winner);
+        try IAgentStatsRegistry(agentStatsRegistry).recordLobbyResult(lobbyId, roster, winner) {
+            // no-op
+        } catch {
+            // Stats sync should not block lobby settlement.
+        }
+    }
+
+    function _recordExperienceStatsResult(uint256 lobbyId, address winner, address[] storage players) internal {
+        if (experienceStatsRegistry == address(0)) {
+            return;
+        }
+        address[] memory roster = new address[](players.length);
+        for (uint256 i = 0; i < players.length; i++) {
+            roster[i] = players[i];
+        }
+        try IExperienceStatsRegistry(experienceStatsRegistry).recordGameResult(lobbyId, roster, winner) {
+            // no-op
+        } catch {
+            // Stats sync should not block lobby settlement.
+        }
+    }
+
+    function _recordExperienceStatsExit(uint256 lobbyId, address player) internal {
+        if (experienceStatsRegistry == address(0)) {
+            return;
+        }
+        try IExperienceStatsRegistry(experienceStatsRegistry).recordLobbyExit(lobbyId, player) {
+            // no-op
+        } catch {
+            // Stats sync should not block core lobby actions.
+        }
+    }
+
+    function _recordConcededPlayersExits(uint256 lobbyId, address[] storage players) internal {
+        if (experienceStatsRegistry == address(0) || gameCore == address(0)) {
+            return;
+        }
+        for (uint256 i = 0; i < players.length; i++) {
+            address player = players[i];
+            bool alive = true;
+            try IGameCorePlayerStatus(gameCore).isPlayerAlive(lobbyId, player) returns (bool status) {
+                alive = status;
+            } catch {
+                continue;
+            }
+            if (!alive) {
+                _recordExperienceStatsExit(lobbyId, player);
+            }
+        }
+    }
+
+    /// @notice After `GameCore.concede`, player can sync `ExperienceStats` exit penalty in a separate tx.
+    function syncConcedeExitPenalty(uint256 _lobbyId) external {
+        require(gameCore != address(0), "GameCore not set");
+        Lobby storage lobby = lobbies[_lobbyId];
+        require(
+            lobby.status == LobbyStatus.ACTIVE || lobby.status == LobbyStatus.COMPLETED,
+            "Game not active"
+        );
+        address player = _actor();
+        require(lobby.hasTicket[player], "No ticket");
+        bool alive = IGameCorePlayerStatus(gameCore).isPlayerAlive(_lobbyId, player);
+        require(!alive, "Player still active");
+        _recordExperienceStatsExit(_lobbyId, player);
     }
 
     /// @notice While lobby is OPEN, a non-host player may leave and reclaim an equal share of `sessionSponsorPool` still held here. EntryPoint deposits are not clawed back.
@@ -394,6 +481,7 @@ contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, 
 
         _removeOpenLobbyPlayer(lobby, player);
         lobby.hasTicket[player] = false;
+        _recordExperienceStatsExit(_lobbyId, player);
 
         emit PlayerLeftOpenLobby(_lobbyId, player, credited);
     }

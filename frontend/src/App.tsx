@@ -39,6 +39,7 @@ import { SpectatorPlayersPanel } from "./components/SpectatorPlayersPanel";
 import { SpectatorTradeFeed } from "./components/SpectatorTradeFeed";
 import { SpectatorOnChainTrades } from "./components/SpectatorOnChainTrades";
 import { TradeOffersModal } from "./components/TradeOffersModal";
+import { LeaderboardPage } from "./components/LeaderboardPage";
 import { localGanache } from "./lib/wallet";
 import {
   ActionCosts,
@@ -292,6 +293,7 @@ function AppPage() {
   const [assistantError, setAssistantError] = useState<string | null>(null);
   const [ikoTradeSuccessNotification, setIkoTradeSuccessNotification] = useState(false);
   const [ikoTradeSuccessMessage, setIkoTradeSuccessMessage] = useState("");
+  const [playerXP, setPlayerXP] = useState<{ experiencePoints: number; gamesWon: number; gamesLeft: number } | null>(null);
 
   // Auto-hide trade success notification
   useEffect(() => {
@@ -409,6 +411,51 @@ function AppPage() {
       cancelled = true;
     };
   }, [publicClient, gameCoreAddress, gameCoreAbi, activeLobby?.id]);
+
+  // Fetch player XP when game ends
+  useEffect(() => {
+    if (activeLobby?.status !== "ended" || !address || !publicClient) {
+      setPlayerXP(null);
+      return;
+    }
+    
+    let cancelled = false;
+    (async () => {
+      try {
+        const experienceStatsAddress = contracts?.contracts?.ExperienceStats?.address as `0x${string}` | undefined;
+        const experienceStatsAbi = contracts?.contracts?.ExperienceStats?.abi;
+        
+        if (!experienceStatsAddress || !experienceStatsAbi) {
+          setPlayerXP(null);
+          return;
+        }
+
+        const result = await publicClient.readContract({
+          address: experienceStatsAddress,
+          abi: experienceStatsAbi,
+          functionName: "getPlayerStats",
+          args: [address as `0x${string}`]
+        } as any);
+
+        if (!cancelled && result) {
+          const stats = result as any;
+          setPlayerXP({
+            experiencePoints: Number(stats.experiencePoints ?? 0),
+            gamesWon: Number(stats.gamesWon ?? 0),
+            gamesLeft: Number(stats.gamesLeft ?? 0)
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setPlayerXP(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLobby?.status, address, publicClient, contracts]);
 
   const lobbyRepository = useMemo(
     () =>
@@ -1630,6 +1677,21 @@ function AppPage() {
           args: [lobbyId]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+
+        if (lobbyManagerAddress && lobbyManagerAbi) {
+          try {
+            const syncHash = await sendSessionTransaction({
+              lobbyId: activeLobby.id,
+              contractAddress: lobbyManagerAddress,
+              contractAbi: lobbyManagerAbi,
+              functionName: "syncConcedeExitPenalty",
+              args: [lobbyId]
+            });
+            await publicClient?.waitForTransactionReceipt({ hash: syncHash as `0x${string}` });
+          } catch {
+            // Concede already succeeded; XP sync can be retried later.
+          }
+        }
       } else if (event === "barter:create") {
         setPendingAction("barter:create");
         const taker = (payload.to as `0x${string}` | undefined) ?? ZERO_ADDRESS;
@@ -2043,6 +2105,7 @@ function AppPage() {
         onCreate={onCreateLobby}
         onOpen={onOpenLobby}
         onDisconnect={() => disconnect()}
+        onOpenLeaderboard={() => navigate("/leaderboard")}
         deployHint={chainDeployHint}
         ticketPriceLabel={ticketPriceLabel}
         claimableWei={lmWithdrawableWei}
@@ -2129,6 +2192,16 @@ function AppPage() {
           <p>
             <strong>You are recorded as the winner on-chain.</strong>
           </p>
+        ) : null}
+        {playerXP ? (
+          <div style={{ padding: "1rem", backgroundColor: "rgba(10, 17, 44, 0.4)", borderRadius: "6px", margin: "1rem 0" }}>
+            <p style={{ margin: "0.5rem 0", fontSize: "0.95rem" }}>
+              <strong>Experience Points</strong>: +{playerXP.experiencePoints}
+            </p>
+            <p style={{ margin: "0.5rem 0", fontSize: "0.85rem", opacity: 0.85 }}>
+              Total XP: {playerXP.experiencePoints} | Wins: {playerXP.gamesWon} | Abandoned: {playerXP.gamesLeft}
+            </p>
+          </div>
         ) : null}
         {lmWithdrawableWei != null ? (
           <p>
@@ -2691,6 +2764,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<AppPage />} />
+      <Route path="/leaderboard" element={<LeaderboardPage />} />
       <Route path="/game/:lobbyId" element={<AppPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

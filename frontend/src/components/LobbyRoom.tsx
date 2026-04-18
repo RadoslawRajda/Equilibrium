@@ -205,8 +205,7 @@ export function LobbyRoom({
 
       {hasTicket && !isHost ? (
         <p className="selected-text" style={{ maxWidth: "42rem", marginTop: "0.5rem" }}>
-          Leaving refunds your share of sponsor funds still on this contract (then use Claim ETH). Deposits already on the
-          EntryPoint for AA gas are not pulled back here.
+          Your funds will be available to withdraw once the game is settled.
         </p>
       ) : null}
 
