@@ -3,13 +3,19 @@ import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
 import {
   ArrowRightLeft,
+  ArrowRight,
   BatteryCharging,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  Diamond,
   Factory,
   Flag,
   Hammer,
+  Landmark,
   Leaf,
   Pickaxe,
+  Settings,
   Sparkles,
   TreePine,
   UtensilsCrossed,
@@ -54,7 +60,8 @@ import {
 } from "./lib/chainGameDefaults";
 import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActivityFeed";
 import { colorFromAddress } from "./utils/helpers/converters";
-
+import * as Select from '@radix-ui/react-select';
+import * as Accordion from '@radix-ui/react-accordion';
 type ContractMeta = {
   contracts: {
     EntryPoint?: {
@@ -206,6 +213,13 @@ function AppPage() {
     ore: 0,
     energy: 0
   });
+  const RESOURCE_MAP = [
+  { label: "food", icon: Wheat, color: "#ffd369" },
+  { label: "wood", icon: TreePine, color: "#5bff9d" },
+  { label: "stone", icon: Pickaxe, color: "#96b7ff" },
+  { label: "ore", icon: Diamond, color: "#ff9f6e" },
+  { label: "energy", icon: BatteryCharging, color: "#56f0ff" }
+];
   const [bankSellKind, setBankSellKind] = useState(0);
   const [bankBuyKind, setBankBuyKind] = useState(1);
   const [bankBulkLots, setBankBulkLots] = useState(1);
@@ -1960,7 +1974,7 @@ function AppPage() {
               Map: {mapRenderer.toUpperCase()}
             </button>
           </div>
-          <button onClick={() => disconnect()}>Disconnect wallet</button>
+          <p>Status: {activeLobby.status}</p>
         </div>
 
         <ActiveMapComponent
@@ -1993,17 +2007,6 @@ function AppPage() {
 
       {!isSpectator ? (
       <aside className="panel right-panel">
-        <h3>Selected Hex</h3>
-        <p className="selected-text">Selected: {selectedForDetails?.id ?? "none"}</p>
-
-        {selectedForDetails ? (
-          <div className="action-group hex-details">
-            <p>Biome: <strong>{selectedForDetails.biome}</strong></p>
-            <p>Owner: <strong>{selectedOwner?.nickname ?? short(selectedForDetails.owner ?? undefined) ?? "none"}</strong></p>
-            <p>Structure: <strong>{selectedForDetails.structure ? `L${selectedForDetails.structure.level}` : "none"}</strong></p>
-          </div>
-        ) : null}
-
         {activeLobby.status === "zero-round" && myTurnInZeroRound ? (
           <div className="action-group">
             <h4>Round 0 — start</h4>
@@ -2041,9 +2044,9 @@ function AppPage() {
             key={player.address} 
             className="player-row"
             style={{ 
-              borderLeft: `4px solid ${colorFromAddress(player.address)}`, // Dodaje kolorowy pasek z boku
+              borderLeft: `1px solid ${colorFromAddress(player.address)}`, // Dodaje kolorowy pasek z boku
               borderRight: `1px solid ${colorFromAddress(player.address)}`, // Opcjonalnie delikatna ramka z prawej
-              paddingLeft: '12px' // Mały odstęp, żeby tekst nie dotykał paska
+              paddingLeft: '16px' // Mały odstęp, żeby tekst nie dotykał paska
             }}
           >
             <div>
@@ -2057,287 +2060,423 @@ function AppPage() {
             </div>
             <span 
               className="player-tag"
-              style={{ color: player.alive === false ? '#666' : colorFromAddress(player.address) }}
+              style={{ color: player.alive === false ? '#666' : colorFromAddress(player.address),
+                       paddingRight: '16px'
+               }}
             >
               {player.alive === false ? "eliminated" : "active"}
             </span>
           </div>
         ))}
-
-        {/* Przycisk Concede bez zmian */}
-        {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
-          <button
-            type="button"
-            className="danger"
-            onClick={() => {
-              if (!window.confirm("Concede this match? Others may win if you are not the last player standing.")) return;
-              void action("game:concede", {});
-            }}
-            disabled={Boolean(pendingAction)}
-          >
-            <Flag size={16} /> Concede match
-          </button>
-        ) : null}
       </div>
 
-        <div className="action-group">
-          <h4>Hex Actions</h4>
-          <p className="selected-text">
-            {selectedActionCost ? `Cost: ${selectedActionCost}` : activeActionCosts ? "Select a hex to see costs and actions." : "Loading costs from chain..."}
-          </p>
-          {selectedForDetails && !selectedForDetails.owner && (
-            <button onClick={() => action("game:discover", { hexId: activeActionHexId })} disabled={!canDiscoverHere || !activeActionHexId}>
-              <Sparkles size={16} /> Discover / Claim ({discoverCost ? formatCost(discoverCost) : "loading..."})
-            </button>
-          )}
-          {canBuildHere && (
-            <button onClick={() => action("game:build", { hexId: activeActionHexId })} disabled={!activeActionHexId}>
-              <Hammer size={16} /> Build lvl1 ({buildCost ? formatCost(buildCost) : "loading..."})
-            </button>
-          )}
-          {canUpgradeHere && (
-            <button onClick={() => action("game:upgrade", { hexId: activeActionHexId })} disabled={!activeActionHexId}>
-              <Leaf size={16} /> Upgrade lvl2 ({upgradeCost ? formatCost(upgradeCost) : "loading..."})
-            </button>
-          )}
-          {canDestroyHere && (
-            <button onClick={() => action("game:destroy", { hexId: activeActionHexId }, true)} disabled={!activeActionHexId}>
-              <CheckCircle2 size={16} /> Destroy structure
-            </button>
-          )}
-          {canCollectHere && (
-            <button onClick={() => action("game:collect", { hexId: activeActionHexId }, true)} disabled={!activeActionHexId}>
-              <CheckCircle2 size={16} /> Collect resources (
-              {collectGainLabel ? `${collectEnergyLabel} · ${collectGainLabel}` : collectEnergyLabel})
-            </button>
-          )}
-          {!selectedForDetails && <p className="selected-text">Select a hex to see actions.</p>}
-        </div>
+      <Accordion.Root type="single" collapsible className="AccordionRoot">
+        <Accordion.Item value="bank" className="action-group" style={{ paddingTop: '0px' }}>
+          
+          <Accordion.Trigger className="AccordionTrigger">
+            <div className="TriggerLabel">
+              <Landmark size={18} color="#acf38f" /> 
+              <h4>Bank</h4>
+            </div>
+            <ChevronDown size={16} className="AccordionChevron" />
+          </Accordion.Trigger>
 
-        <div className="action-group">
-          <h4>Bank</h4>
-          <p className="selected-text">
-            Trade with the neutral bank: pay <strong>4× lots</strong> of one basic resource for <strong>1× lots</strong> of
-            another (4:1 per lot). One transaction can repeat up to <strong>{bankTradeBulkMaxLots}</strong> lots.
-            {tradeEnergyCost > 0 ? (
-              <>
-                {" "}
-                Each trade action also costs <strong>{tradeEnergyCost} energy</strong>.
-              </>
-            ) : null}
-          </p>
-          <div className="trade-line">
-            <label htmlFor="bank-sell">Pay</label>
-            <select
-              id="bank-sell"
-              value={bankSellKind}
-              onChange={(e) => setBankSellKind(Number(e.target.value))}
-              disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+          <Accordion.Content className="AccordionContent">
+            <p className="selected-text">
+              Trade with the neutral bank: pay <strong>4× lots</strong> of one basic resource for <strong>1× lots</strong> of
+              another (4:1 per lot). One transaction can repeat up to <strong>{bankTradeBulkMaxLots}</strong> lots.
+              {tradeEnergyCost > 0 && (
+                <>
+                  {" "}
+                  Each trade action also costs <strong>{tradeEnergyCost} energy</strong>.
+                </>
+              )}
+            </p>
+
+            <div className="trade-line">
+              <label>Pay</label>
+              <Select.Root
+                value={bankSellKind.toString()}
+                onValueChange={(val) => setBankSellKind(Number(val))}
+                disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+              >
+                <Select.Trigger className="SelectTrigger">
+                  <Select.Value placeholder="Select..."/>
+                  <Select.Icon><ChevronDown size={16} /></Select.Icon>
+                </Select.Trigger>
+
+                <Select.Portal>
+                  <Select.Content className="SelectContent" position="popper" sideOffset={5}>
+                    <Select.Viewport className="SelectViewport">
+                      {RESOURCE_MAP.map((res, index) => {
+                        const Icon = res.icon;
+                        return (
+                          <Select.Item key={index} className="SelectItem" value={index.toString()}>
+                            <Select.ItemText>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Icon size={16} color={res.color} />
+                                <span>{res.label} ×4</span>
+                              </div>
+                            </Select.ItemText>
+                          </Select.Item>
+                        );
+                      })}
+                    </Select.Viewport>
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
+            </div>
+
+            <div className="trade-line">
+              <label htmlFor="bank-buy">Receive</label>
+              <Select.Root
+                value={bankBuyKind.toString()}
+                onValueChange={(val) => setBankBuyKind(Number(val))}
+                disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+              >
+                <Select.Trigger className="SelectTrigger">
+                  <Select.Value />
+                  <Select.Icon><ChevronDown size={16} /></Select.Icon>
+                </Select.Trigger>
+
+                <Select.Portal>
+                  <Select.Content className="SelectContent" position="popper" sideOffset={5}>
+                    <Select.Viewport className="SelectViewport">
+                      {RESOURCE_MAP.map((res, index) => {
+                        const Icon = res.icon;
+                        return (
+                          <Select.Item key={index} className="SelectItem" value={index.toString()}>
+                            <Select.ItemText>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Icon size={16} color={res.color} />
+                                <span>{res.label} ×1</span>
+                              </div>
+                            </Select.ItemText>
+                          </Select.Item>
+                        );
+                      })}
+                    </Select.Viewport>
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
+            </div>
+
+            <div className="trade-line">
+              <label htmlFor="bank-lots">Lots (1–{bankTradeBulkMaxLots})</label>
+              <input
+                id="bank-lots"
+                type="number"
+                className="TradeInput"
+                min={1}
+                max={bankTradeBulkMaxLots}
+                value={bankBulkLots}
+                onChange={(e) => setBankBulkLots(Math.max(1, Math.min(bankTradeBulkMaxLots, Number(e.target.value) || 1)))}
+                disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
+              disabled={activeLobby.status !== "running" || bankSellKind === bankBuyKind || Boolean(pendingAction)}
             >
-              <option value={0}>food ×4</option>
-              <option value={1}>wood ×4</option>
-              <option value={2}>stone ×4</option>
-              <option value={3}>ore ×4</option>
-            </select>
-          </div>
-          <div className="trade-line">
-            <label htmlFor="bank-buy">Receive</label>
-            <select
-              id="bank-buy"
-              value={bankBuyKind}
-              onChange={(e) => setBankBuyKind(Number(e.target.value))}
-              disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
-            >
-              <option value={0}>food ×1</option>
-              <option value={1}>wood ×1</option>
-              <option value={2}>stone ×1</option>
-              <option value={3}>ore ×1</option>
-            </select>
-          </div>
-          <div className="trade-line">
-            <label htmlFor="bank-lots">Lots (1–{bankTradeBulkMaxLots})</label>
-            <input
-              id="bank-lots"
-              type="number"
-              min={1}
-              max={bankTradeBulkMaxLots}
-              value={bankBulkLots}
-              onChange={(e) => setBankBulkLots(Math.max(1, Math.min(bankTradeBulkMaxLots, Number(e.target.value) || 1)))}
-              disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
+              Execute bank trade{bankBulkLots > 1 ? ` (${bankBulkLots} lots)` : ""}
+            </button>
+          </Accordion.Content>
+        </Accordion.Item>
+      </Accordion.Root>
+
+        <Accordion.Root type="single" collapsible className="AccordionRoot">
+          <Accordion.Item value="trade" className="action-group" style={{ paddingTop: '0px' }}>
+  <Accordion.Trigger className="AccordionTrigger">
+    <div className="TriggerLabel">
+      <ArrowRightLeft size={18} color="#b1bb28"/>
+      <h4>Trade</h4>
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {openTradeOffersCount > 0 && (
+        <span className="trade-offers-badge" style={{ fontSize: '12px' }}>
+          {openTradeOffersCount}
+        </span>
+      )}
+      <ChevronDown size={16} className="AccordionChevron" />
+    </div>
+  </Accordion.Trigger>
+
+  <Accordion.Content className="AccordionContent">
+    {/* Przycisk do modalu z ofertami */}
+    <button
+      type="button"
+      className="trade-offers-trigger"
+      style={{ width: '100%', marginBottom: '12px' }}
+      onClick={() => setTradeOffersModalOpen(true)}
+    >
+      <ArrowRightLeft size={16} aria-hidden />
+      Trading offers
+      <span className="trade-offers-badge">{openTradeOffersCount}</span>
+    </button>
+
+    <p className="selected-text">
+      Broadcast a trade offer. Anyone can accept if they can pay the request.
+      {tradeEnergyCost > 0 ? ` Trading costs ${tradeEnergyCost} energy per action.` : ""}
+    </p>
+
+    {/* Grid z inputami handlu */}
+    <div className="trade-grid" style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      gap: '12px',
+      padding: '10px' 
+    }}>
+      {/* Kolumna: YOU OFFER */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <strong style={{ fontSize: '11px', textAlign: 'center', opacity: 0.7 }}>YOU OFFER</strong>
+        {RESOURCE_MAP.map((res) => (
+          <div key={`offer-${res.label}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <res.icon size={16} color={res.color} />
+            <input 
+              className="trade-resource-input"
+              type="number"               
+              min={0} 
+              style={{ width: '45px', background: '#1a1a2e', border: '1px solid #333', color: 'white', borderRadius: '4px', padding: '2px 4px', fontSize: '13px' }}
+              value={tradeOfferDraft[res.label] || 0} 
+              onChange={(e) => setTradeOfferDraft(d => ({ ...d, [res.label]: Number(e.target.value) }))} 
             />
           </div>
-          <button
-            type="button"
-            onClick={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
-            disabled={activeLobby.status !== "running" || bankSellKind === bankBuyKind || Boolean(pendingAction)}
-          >
-            Execute bank trade{bankBulkLots > 1 ? ` (${bankBulkLots} lots)` : ""}
-          </button>
-        </div>
+        ))}
+      </div>
 
-        <div className="action-group">
-          <h4>Crafting</h4>
-          <p className="selected-text">
-            Smelt <strong>alloy</strong> from basics — costs scale with how much you already forged.
-            {victoryAlloyTarget != null && (
-              <>
-                {" "}
-                First to <strong>{victoryAlloyTarget}</strong> alloy wins.
-              </>
-            )}
-          </p>
-          <p className="selected-text">
-            {craftCost
-              ? `Next craft cost: ${formatCost(craftCost)}`
-              : craftCostHint
-                ? `Next craft cost: ${craftCostHint}`
-                : "Loading craft preview…"}
-          </p>
-          <button
-            type="button"
-            onClick={() => action("game:craft", {})}
-            disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
-          >
-            <Factory size={16} /> Craft alloy
-          </button>
-        </div>
+      <div style={{ marginTop: '15px', opacity: 0.5 }}>
+        <ArrowRight size={20} />
+      </div>
 
-        <div className="action-group">
-          <h4>Trade</h4>
-          <button
-            type="button"
-            className="trade-offers-trigger"
-            onClick={() => setTradeOffersModalOpen(true)}
-          >
-            <ArrowRightLeft size={16} aria-hidden />
-            Trading offers
-            <span className="trade-offers-badge">{openTradeOffersCount}</span>
-          </button>
-          <p className="selected-text">
-            Broadcast a trade offer. Anyone can accept if they can pay the request.
-            {tradeEnergyCost > 0 ? ` Trading costs ${tradeEnergyCost} energy per action.` : ""}
-          </p>
-          <div className="trade-grid">
-            <div>
-              <strong>You offer</strong>
-              {resourceKeys.map((key) => (
-                <div key={`offer-${key}`} className="trade-line">
-                  <label>{key}</label>
-                  <input type="number" min={0} value={tradeOfferDraft[key]} onChange={(e) => setTradeOfferDraft((draft) => ({ ...draft, [key]: Number(e.target.value) }))} />
-                </div>
-              ))}
-            </div>
-            <div>
-              <strong>You want</strong>
-              {resourceKeys.map((key) => (
-                <div key={`request-${key}`} className="trade-line">
-                  <label>{key}</label>
-                  <input type="number" min={0} value={tradeRequestDraft[key]} onChange={(e) => setTradeRequestDraft((draft) => ({ ...draft, [key]: Number(e.target.value) }))} />
-                </div>
-              ))}
-            </div>
+      {/* Kolumna: YOU WANT */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <strong style={{ fontSize: '11px', textAlign: 'center', opacity: 0.7 }}>YOU WANT</strong>
+        {RESOURCE_MAP.map((res) => (
+          <div key={`request-${res.label}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <res.icon size={16} color={res.color} />
+            <input 
+              className="trade-resource-input"
+              type="number" 
+              min={0} 
+              style={{ width: '45px', background: '#1a1a2e', border: '1px solid #333', color: 'white', borderRadius: '4px', padding: '2px 4px', fontSize: '13px' }}
+              value={tradeRequestDraft[res.label] || 0} 
+              onChange={(e) => setTradeRequestDraft(d => ({ ...d, [res.label]: Number(e.target.value) }))} 
+            />
           </div>
-          <button
-            onClick={async () => {
-              try {
-                await action("barter:create", {
-                  to: ZERO_ADDRESS,
-                  offer: { ...tradeOfferDraft },
-                  request: { ...tradeRequestDraft }
-                });
-              } catch (e: any) {
-                setError(e.message);
-              }
-            }}
-          >
-            <ArrowRightLeft size={16} /> Send trade
-          </button>
-        </div>
+        ))}
+      </div>
+    </div>
 
-        <div className="action-group">
-          <h4>Votes</h4>
-          <p className="selected-text">
-            Stuck in round 0? Propose <strong>end game</strong> — if everyone votes yes, the lobby ends. While running, the
-            same vote closes after the deadline or when all players have cast.
-          </p>
-          <button
-            type="button"
-            onClick={() =>
-              action("vote:create", {
-                title: "End game",
-                effect: { special: "__END_GAME__" }
-              })
-            }
-            disabled={Boolean(pendingAction) || (activeLobby.status !== "zero-round" && activeLobby.status !== "running")}
-          >
-            Propose end game
-          </button>
-          <div className="vote-preset-grid">
-            {VOTE_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                onClick={async () => {
-                  try {
-                    await action("vote:create", {
-                      lobbyId: activeLobby.id,
-                      by: address,
-                      title: preset.title,
-                      effect: preset.effect
-                    });
-                  } catch (e: any) {
-                    setError(e.message);
-                  }
-                }}
-              >
-                <Vote size={16} /> {preset.label}
-              </button>
-            ))}
-          </div>
+    {/* Przycisk wysyłki */}
+    <button
+      style={{ marginTop: '10px', width: '100%' }}
+      onClick={async () => {
+        try {
+          await action("barter:create", {
+            to: ZERO_ADDRESS,
+            offer: { ...tradeOfferDraft },
+            request: { ...tradeRequestDraft }
+          });
+        } catch (e: any) {
+          setError(e.message);
+        }
+      }}
+    >
+      <ArrowRightLeft size={16} /> Send trade
+    </button>
+  </Accordion.Content>
+</Accordion.Item>
+          </Accordion.Root>             
+        <Accordion.Root type="single" collapsible className="AccordionRoot">
+          <Accordion.Item value="crafting" className="action-group" style={{ paddingTop: '0px'}}>
+            
+          <Accordion.Trigger className="AccordionTrigger">
+            <div className="TriggerLabel">
+              <Factory size={18} color="#e0b0ff" />
+              <h4>Crafting</h4>
+            </div>
+            <ChevronDown size={16} className="AccordionChevron" />
+          </Accordion.Trigger>
 
-          {activeLobby.globalVotes
-            .filter((vote: { resolved?: boolean }) => !vote.resolved)
-            .slice(0, 8)
-            .map((vote: any) => (
-            <div key={vote.id} className="vote-item">
-              <p>{vote.title}</p>
-              <p className="selected-text">
-                {vote.effectKey === "__END_ROUND__"
-                  ? "End current round (unanimous yes, no “no” votes)"
-                  : vote.effectKey === "__END_GAME__"
-                    ? "End the match"
-                    : vote.effectKey}
-              </p>
-              <p className="selected-text">Closes after round {vote.closesAtRound}</p>
-              <p className="selected-text">
-                Votes: yes {vote.yesVotes} / no {vote.noVotes}
-              </p>
-              <div className="vote-buttons">
+            <Accordion.Content className="AccordionContent " >
+                <p className="selected-text">
+                  Smelt <strong>alloy</strong> from basics — costs scale with how much you already forged.
+                  {victoryAlloyTarget != null && (
+                    <>
+                      {" "}
+                      First to <strong>{victoryAlloyTarget}</strong> alloy wins.
+                    </>
+                  )}
+                </p>
+
+                <div className="selected-text">
+                  {craftCost
+                    ? `Next craft cost: ${formatCost(craftCost)}`
+                    : craftCostHint
+                      ? `Next craft cost: ${craftCostHint}`
+                      : "Loading craft preview…"}
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}
-                  disabled={Boolean(pendingAction)}
+                  onClick={() => action("game:craft", {})}
+                  disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
                 >
-                  Yes
+                  <Factory size={16} /> Craft alloy
                 </button>
-                <button
-                  type="button"
-                  onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}
-                  disabled={Boolean(pendingAction)}
-                >
-                  No
-                </button>
+            </Accordion.Content>
+          </Accordion.Item>
+        </Accordion.Root>
+
+        <Accordion.Root type="single" collapsible className="AccordionRoot">
+          <Accordion.Item value="votes" className="action-group" style={{ paddingTop: '0px' }}>
+            <Accordion.Trigger className="AccordionTrigger">
+              <div className="TriggerLabel">
+                <Vote size={18} color="#525252" />
+                <h4>Votes</h4>
               </div>
-            </div>
-          ))}
-        </div>
+              <ChevronDown size={16} className="AccordionChevron" />
+            </Accordion.Trigger>
 
-        <div className="action-group">
-          <h4>Lobby</h4>
-          <button onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })} disabled={activeLobby.status !== "running"}>
-            Propose end round
-          </button>
-          <p>Status: {activeLobby.status}</p>
-        </div>
+            <Accordion.Content className="AccordionContent">
+              <p className="selected-text">
+                Stuck in round 0? Propose <strong>end game</strong> — if everyone votes yes, the lobby ends. 
+                While running, the same vote closes after the deadline or when all players have cast.
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  action("vote:create", {
+                    title: "End game",
+                    effect: { special: "__END_GAME__" }
+                  })
+                }
+                disabled={Boolean(pendingAction) || (activeLobby.status !== "zero-round" && activeLobby.status !== "running")}
+              >
+                Propose end game
+              </button>
+
+              <div className="vote-preset-grid" style={{ marginTop: '10px' }}>
+                {VOTE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={async () => {
+                      try {
+                        await action("vote:create", {
+                          lobbyId: activeLobby.id,
+                          by: address,
+                          title: preset.title,
+                          effect: preset.effect
+                        });
+                      } catch (e: any) {
+                        setError(e.message);
+                      }
+                    }}
+                  >
+                    <Vote size={16} /> {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              {activeLobby.globalVotes && activeLobby.globalVotes.length > 0 && (
+                <div className="active-votes-section" style={{ marginTop: '15px' }}>
+                  {activeLobby.globalVotes
+                    .filter((vote: { resolved?: boolean }) => !vote.resolved)
+                    .slice(0, 8)
+                    .map((vote: any) => (
+                      <div key={vote.id} className="vote-item" style={{ borderTop: '1px solid #333', padding: '10px 0' }}>
+                        <p><strong>{vote.title}</strong></p>
+                        <p className="selected-text">
+                          {vote.effectKey === "__END_ROUND__"
+                            ? "End current round (unanimous yes, no “no” votes)"
+                            : vote.effectKey === "__END_GAME__"
+                              ? "End the match"
+                              : vote.effectKey}
+                        </p>
+                        <p className="selected-text">Closes after round {vote.closesAtRound}</p>
+                        <p className="selected-text">
+                          Votes: yes {vote.yesVotes} / no {vote.noVotes}
+                        </p>
+                        <div className="vote-buttons">
+                          <button
+                            type="button"
+                            onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}
+                            disabled={Boolean(pendingAction)}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}
+                            disabled={Boolean(pendingAction)}
+                          >
+                            No
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </Accordion.Content>
+          </Accordion.Item>
+        </Accordion.Root>
+
+        <Accordion.Root type="single" collapsible className="AccordionRoot">
+                <Accordion.Item value="options" className="action-group" style={{ paddingTop: '0px' }}>
+        <Accordion.Trigger className="AccordionTrigger">
+          <div className="TriggerLabel">
+            <Settings size={18} color="#e0b0ff" />
+            <h4>Game options</h4>
+          </div>
+          <ChevronDown size={16} className="AccordionChevron" />
+        </Accordion.Trigger>
+
+        <Accordion.Content className="AccordionContent">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+            
+            {/* Przycisk poddania się - wyświetlany tylko gdy gracz żyje i gra trwa */}
+            {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
+              <button
+                type="button"
+                className="danger"
+                style={{ width: '100%' }}
+                onClick={() => {
+                  if (!window.confirm("Concede this match? Others may win if you are not the last player standing.")) return;
+                  void action("game:concede", {});
+                }}
+                disabled={Boolean(pendingAction)}
+              >
+                <Flag size={16} /> Concede match
+              </button>
+            ) : null}
+
+            {/* Przycisk zakończenia rundy */}
+            <button 
+              type="button"
+              style={{ width: '100%' }}
+              onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })} 
+              disabled={activeLobby.status !== "running"}
+            >
+              Propose end round
+            </button>
+
+            {/* Przycisk rozłączenia portfela */}
+            <button 
+              type="button"
+              style={{ width: '100%', opacity: 0.8 }}
+              onClick={() => disconnect()}
+            >
+              Disconnect wallet
+            </button>
+
+          </div>
+        </Accordion.Content>
+      </Accordion.Item>
+          </Accordion.Root>
 
         <div className="log-list">
           {activeLobby.logs.slice(0, 8).map((log) => (
