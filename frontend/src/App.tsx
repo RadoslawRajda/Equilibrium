@@ -96,6 +96,11 @@ type ContractMeta = {
   };
 };
 
+type AssistantChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
@@ -268,6 +273,10 @@ function AppPage() {
   const [spectatorTradeFeed, setSpectatorTradeFeed] = useState<TradeFeedItem[]>([]);
   const [spectatorTradeFeedLoading, setSpectatorTradeFeedLoading] = useState(false);
   const [tradeOffersModalOpen, setTradeOffersModalOpen] = useState(false);
+  const [assistantMessages, setAssistantMessages] = useState<AssistantChatMessage[]>([]);
+  const [assistantPrompt, setAssistantPrompt] = useState("");
+  const [assistantSending, setAssistantSending] = useState(false);
+  const [assistantError, setAssistantError] = useState<string | null>(null);
   const lobbySnapshotRef = useRef<LobbyState | null>(null);
   const localHexOverridesRef = useRef(
     new Map<string, { owner: string; discoveredBy: string[]; structure?: LobbyState["mapHexes"][number]["structure"] }>()
@@ -302,6 +311,13 @@ function AppPage() {
     | undefined;
   const erc8004RegistryAbi = contracts?.contracts?.ERC8004PlayerAgentRegistry?.abi;
   const rpcDisplay = import.meta.env.VITE_RPC_URL || "http://localhost:8545";
+  const assistantApiUrl = (import.meta.env.VITE_ASSISTANT_API_URL || "http://localhost:4060").trim();
+
+  useEffect(() => {
+    setAssistantMessages([]);
+    setAssistantPrompt("");
+    setAssistantError(null);
+  }, [activeLobby?.id]);
 
   useEffect(() => {
     if (!publicClient || !lobbyManagerAddress || !lobbyManagerAbi) {
@@ -1855,6 +1871,73 @@ function AppPage() {
     }
   };
 
+  const activeLobbyIdForAssistant = activeLobby?.id || lobbyId || "";
+  const hasAssistantInputs =
+    Boolean(activeLobbyIdForAssistant) &&
+    Boolean(address) &&
+    /^0x[a-fA-F0-9]{40}$/.test(address || "");
+
+  const onSendAssistantPrompt = async () => {
+    if (assistantSending) return;
+    const prompt = assistantPrompt.trim();
+    if (!prompt) return;
+    if (!hasAssistantInputs || !address) {
+      setAssistantError("Missing lobbyId or player address for assistant request.");
+      return;
+    }
+
+    setAssistantError(null);
+    setAssistantPrompt("");
+    setAssistantMessages((prev) => [...prev, { role: "user", content: prompt }]);
+    setAssistantSending(true);
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort("assistant-timeout"), 20_000);
+
+    try {
+      const response = await fetch(`${assistantApiUrl}/api/assistant/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          lobbyId: activeLobbyIdForAssistant,
+          playerAddress: address,
+          prompt
+        }),
+        signal: controller.signal
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        answer?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || `Assistant API error (${response.status})`);
+      }
+
+      const answer = typeof data.answer === "string" && data.answer.trim() ? data.answer : "Brak odpowiedzi od asystenta.";
+      setAssistantMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+    } catch (err) {
+      const isAbort = controller.signal.aborted;
+      const message = isAbort
+        ? "Assistant request timed out. Please try again."
+        : err instanceof Error
+          ? err.message
+          : "Failed to send request to assistant.";
+      setAssistantError(message);
+      setAssistantMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I cannot answer right now. Please try again in a moment."
+        }
+      ]);
+    } finally {
+      window.clearTimeout(timeoutId);
+      setAssistantSending(false);
+    }
+  };
+
   const walletConnectConnector = connectors.find((c) => c.id === "injected") || connectors[0];
 
   if (!isConnected) {
@@ -2606,6 +2689,41 @@ function AppPage() {
           </Accordion.Root>
 
         <div className="log-list">
+          <div className="action-group assistant-chat-panel">
+            <h4>Assistant (placeholder)</h4>
+            <div className="assistant-chat-messages">
+              {assistantMessages.length === 0 ? (
+                <p className="selected-text">Ask about rules or strategy for the current lobby situation.</p>
+              ) : (
+                assistantMessages.map((m, idx) => (
+                  <div key={`${m.role}-${idx}`} className={`assistant-chat-message assistant-chat-message--${m.role}`}>
+                    <strong>{m.role === "user" ? "You" : "Assistant"}</strong>
+                    <p>{m.content}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <textarea
+              className="assistant-chat-input"
+              value={assistantPrompt}
+              onChange={(e) => setAssistantPrompt(e.target.value)}
+              placeholder="Type your question for the assistant..."
+              rows={3}
+              disabled={assistantSending || !hasAssistantInputs}
+            />
+
+            <button
+              type="button"
+              onClick={() => void onSendAssistantPrompt()}
+              disabled={assistantSending || !assistantPrompt.trim() || !hasAssistantInputs}
+            >
+              {assistantSending ? "Sending..." : "Send"}
+            </button>
+
+            {assistantError ? <p className="selected-text assistant-chat-error">{assistantError}</p> : null}
+          </div>
+
           {activeLobby.logs.slice(0, 8).map((log) => (
             <p key={log.id}>{new Date(log.timestamp).toLocaleTimeString()} • {log.text}</p>
           ))}

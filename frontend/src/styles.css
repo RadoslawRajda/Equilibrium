@@ -711,6 +711,63 @@ button.lobby-kick-btn.danger:disabled {
   margin-top: 0.45rem;
 }
 
+.assistant-chat-panel {
+  margin-bottom: 0.8rem;
+}
+
+.assistant-chat-messages {
+  max-height: 200px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.assistant-chat-message {
+  border: 1px solid rgba(130, 160, 255, 0.2);
+  border-radius: 10px;
+  padding: 0.45rem;
+  background: rgba(10, 18, 48, 0.6);
+}
+
+.assistant-chat-message--user {
+  border-color: rgba(86, 240, 255, 0.35);
+}
+
+.assistant-chat-message--assistant {
+  border-color: rgba(91, 255, 157, 0.35);
+}
+
+.assistant-chat-message strong {
+  display: inline-block;
+  margin-bottom: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.assistant-chat-message p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+}
+
+.assistant-chat-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 72px;
+  border-radius: 10px;
+  border: 1px solid rgba(130, 160, 255, 0.4);
+  background: linear-gradient(135deg, #11225a, #1b2f75);
+  color: var(--text);
+  padding: 0.45rem;
+}
+
+.assistant-chat-error {
+  margin-top: 0.5rem;
+  color: #ff9a9a;
+}
+
 .hex-details p {
   margin: 0.3rem 0;
 }

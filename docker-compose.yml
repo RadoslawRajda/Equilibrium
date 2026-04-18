@@ -148,6 +148,30 @@ services:
       AGENT_NAME: Drift
       PLAYER_IDENTITY_PATH: personas/drift.md
 
+  assistant-agent:
+    image: cryptocatan/assistant-agent:local
+    build: ./agents/assistant
+    ports:
+      - "4060:4060"
+    environment:
+      PORT: "4060"
+      RPC_URL: http://ganache:8545
+      DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
+      CONTEXT_TIMEOUT_MS: "6000"
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      ASSISTANT_OLLAMA_URL: ${ASSISTANT_OLLAMA_URL:-http://host.docker.internal:11434}
+      ASSISTANT_OLLAMA_MODEL: ${ASSISTANT_OLLAMA_MODEL:-llama3.2}
+    volumes:
+      - ./contracts/deployments:/contracts/deployments:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      ganache:
+        condition: service_started
+      hardhat:
+        condition: service_started
+
   frontend:
     image: node:20-alpine
     working_dir: /app
@@ -158,6 +182,7 @@ services:
       - VITE_CHAIN_ID=1337
       - VITE_RPC_URL=http://localhost:8545
       - VITE_BUNDLER_URL=/bundler
+      - VITE_ASSISTANT_API_URL=http://localhost:4060
       - VITE_WALLETCONNECT_PROJECT_ID=demo-project-id
     ports:
       - "3000:3000"
@@ -172,3 +197,4 @@ services:
     depends_on:
       - paymaster
       - hardhat
+      - assistant-agent
