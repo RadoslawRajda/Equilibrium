@@ -1,12 +1,12 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState, memo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { Bloom, BrightnessContrast, EffectComposer, Noise, SMAA, Vignette } from "@react-three/postprocessing";
+import { Bloom, BrightnessContrast, EffectComposer, HueSaturation, SMAA, Vignette } from "@react-three/postprocessing";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { Box3, DoubleSide, Path, Shape, SRGBColorSpace, TextureLoader, Vector3 } from "three";
-import type { Group, Mesh, MeshStandardMaterial, Object3D, Texture } from "three";
+import { BackSide, Box3, Color, DoubleSide, Matrix4, MeshBasicMaterial, Object3D, Path, Shape, SphereGeometry, SRGBColorSpace, TextureLoader, Vector3 } from "three";
+import type { BufferGeometry, Group, InstancedMesh as ThreeInstancedMesh, Material, Mesh, MeshStandardMaterial, Texture } from "three";
 import type { HexTile } from "../types";
-import { BIOME_ASSET_KEY, MAP_3D_ASSETS, type Map3dAssetConfig, type Map3dAssetKey } from "../config/map3dAssets";
+import { BIOME_ASSET_KEY, MAP_3D_ASSETS, STRUCTURE_ASSET_KEY, type Map3dAssetConfig, type Map3dAssetKey } from "../config/map3dAssets";
 import { generateTilePropPlan, type PropInstancePlan } from "../config/map3dProps";
 import { colorFromAddress } from "../utils/helpers/converters";
 import { biomeResourceMeta } from "./biomeResourceMeta";
@@ -46,15 +46,93 @@ const biomeStyle: Record<string, { base: string; edge: string; glow: string; res
 
 const HEX_RADIUS = 1.9;
 const PROP_TARGET_FOOTPRINT = 0.95;
+const MOUNTAIN_PROP_TARGET_FOOTPRINT = PROP_TARGET_FOOTPRINT * 5;
 const PROP_DEBUG_ENABLED = ["1", "true", "yes", "on"].includes(
   String(import.meta.env.VITE_MAP3D_PROP_DEBUG || "").toLowerCase()
 );
+
+const debugPropGeometry = new SphereGeometry(0.035, 10, 10);
+const debugPropMaterial = new MeshBasicMaterial({ color: "#56f0ff" });
+const failedPropMaterial = new MeshBasicMaterial({ color: "#ff6b6b" });
+const loadingPropMaterial = new MeshBasicMaterial({ color: "#ffd369" });
+
+const PROP_MATERIAL_CACHE = new Map<string, MeshStandardMaterial>();
+
+function getPropTargetFootprint(plan: Pick<PropInstancePlan, "assetId" | "tags">) {
+  const isPeak = plan.tags.includes("peak") || plan.assetId.includes("mountain.peak.");
+  return isPeak ? MOUNTAIN_PROP_TARGET_FOOTPRINT : PROP_TARGET_FOOTPRINT;
+}
+
+function getCachedPropMaterial(baseMaterial: MeshStandardMaterial, texture: Texture) {
+  const cacheKey = `${baseMaterial.uuid}:${texture.uuid}`;
+  const cached = PROP_MATERIAL_CACHE.get(cacheKey);
+  if (cached) return cached;
+
+  const material = baseMaterial.clone();
+  material.map = texture;
+  material.alphaMap = null;
+  material.transparent = true;
+  material.alphaTest = 0.5;
+  material.color.set("#ffffff");
+  material.metalness = 0;
+  material.roughness = 1;
+  material.emissiveMap = texture;
+  material.emissive.set("#ffffff");
+  material.emissiveIntensity = 0.25;
+  material.side = DoubleSide;
+  material.needsUpdate = true;
+
+  PROP_MATERIAL_CACHE.set(cacheKey, material);
+  return material;
+}
+
+function getResolvedPropMaterial(sourceMaterial: Material | Material[], texture?: Texture): Material | Material[] {
+  if (!texture) return sourceMaterial;
+
+  if (Array.isArray(sourceMaterial)) {
+    return sourceMaterial.map((material) => {
+      const standard = material as MeshStandardMaterial & { isMeshStandardMaterial?: boolean };
+      if (!standard.isMeshStandardMaterial) return material;
+      return getCachedPropMaterial(standard, texture);
+    });
+  }
+
+  const standard = sourceMaterial as MeshStandardMaterial & { isMeshStandardMaterial?: boolean };
+  if (!standard.isMeshStandardMaterial) return sourceMaterial;
+  return getCachedPropMaterial(standard, texture);
+}
 
 const tilePosition = (q: number, r: number) => {
   const x = HEX_RADIUS * Math.sqrt(3) * (q + r / 2);
   const z = HEX_RADIUS * 1.5 * r;
   return [x, z] as const;
 };
+
+function getHexBaseHeight(biome: HexTile["biome"]) {
+  return 0.6 + (biome === "Mountains" ? 0.25 : 0) + (biome === "Desert" ? -0.08 : 0);
+}
+
+function getBiomeSurfaceTopY(
+  biome: HexTile["biome"],
+  biomeAssetConfig: Map3dAssetConfig | undefined,
+  biomeAssetState: AssetLoadState | undefined
+) {
+  const baseHeight = getHexBaseHeight(biome);
+  if (!biomeAssetState?.scene) {
+    return baseHeight / 2 + 0.02;
+  }
+
+  const defaultScale = biomeAssetConfig?.scale ?? [1, 1, 1];
+  const box = new Box3().setFromObject(biomeAssetState.scene);
+  const size = new Vector3();
+  box.getSize(size);
+  const footprint = Math.max(size.x, size.z, 0.0001);
+  const fitScale = (HEX_RADIUS * 2) / footprint;
+  const positionY = biomeAssetConfig?.position?.[1] ?? -box.min.y * fitScale;
+  const scaleY = defaultScale[1] * fitScale;
+
+  return positionY + box.max.y * scaleY + 0.02;
+}
 
 type AssetLoadState = {
   status: "idle" | "loading" | "ready" | "failed";
@@ -68,10 +146,33 @@ type TextureLoadState = {
   error?: string;
 };
 
+type RuntimePerfStats = {
+  fps: number;
+  frameMs: number;
+  calls: number;
+  triangles: number;
+  geometries: number;
+  textures: number;
+};
+
 type NormalizedTransform = {
   position: [number, number, number];
   scale: [number, number, number];
-  topY: number;
+  topY?: number;
+};
+
+type PropMeshTemplate = {
+  key: string;
+  geometry: BufferGeometry;
+  sourceMaterial: Material | Material[];
+  nodeMatrix: Matrix4;
+};
+
+type PropInstanceBatch = {
+  key: string;
+  geometry: BufferGeometry;
+  material: Material | Material[];
+  matrices: Matrix4[];
 };
 
 const ASSET_KEYS = Object.keys(MAP_3D_ASSETS) as Map3dAssetKey[];
@@ -205,6 +306,164 @@ function useGltfLibrary(urls: string[]) {
   return assets;
 }
 
+function RuntimePerfSampler({ enabled, onSample }: { enabled: boolean; onSample: (next: RuntimePerfStats) => void }) {
+  const framesRef = useRef(0);
+  const elapsedRef = useRef(0);
+
+  useFrame((state, delta) => {
+    if (!enabled) {
+      framesRef.current = 0;
+      elapsedRef.current = 0;
+      return;
+    }
+
+    framesRef.current += 1;
+    elapsedRef.current += delta;
+    if (elapsedRef.current < 0.5) return;
+
+    const frames = framesRef.current;
+    const elapsed = elapsedRef.current;
+    const info = state.gl.info;
+
+    onSample({
+      fps: frames / elapsed,
+      frameMs: (elapsed * 1000) / frames,
+      calls: info.render.calls,
+      triangles: info.render.triangles,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures
+    });
+
+    framesRef.current = 0;
+    elapsedRef.current = 0;
+  });
+
+  return null;
+}
+
+const PropInstancedBatch = memo(function PropInstancedBatch({ batch }: { batch: PropInstanceBatch }) {
+  const meshRef = useRef<ThreeInstancedMesh>(null);
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+
+    for (let i = 0; i < batch.matrices.length; i += 1) {
+      mesh.setMatrixAt(i, batch.matrices[i]);
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [batch]);
+
+  if (!batch.matrices.length) return null;
+
+  return <instancedMesh ref={meshRef} args={[batch.geometry, batch.material as any, batch.matrices.length]} raycast={() => null} />;
+});
+
+function PropInstancedBatches({ batches }: { batches: PropInstanceBatch[] }) {
+  if (!batches.length) return null;
+
+  return (
+    <group>
+      {batches.map((batch) => (
+        <PropInstancedBatch key={batch.key} batch={batch} />
+      ))}
+    </group>
+  );
+}
+
+const SKY_VERTEX_SHADER = `
+varying vec3 vWorldPosition;
+
+void main() {
+  vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+  vWorldPosition = worldPosition.xyz;
+  gl_Position = projectionMatrix * viewMatrix * worldPosition;
+}
+`;
+
+const SKY_FRAGMENT_SHADER = `
+uniform vec3 blackTopColor;
+uniform vec3 darkBlueColor;
+uniform vec3 blueColor;
+uniform vec3 lightBlueColor;
+varying vec3 vWorldPosition;
+
+void main() {
+  // Top-to-bottom distribution:
+  // 20% black -> 30% dark blue -> 40% blue -> 10% light blue.
+  float t = clamp(vWorldPosition.y * 0.0085 + 0.4, 0.0, 1.0);
+  float topDown = 1.0 - t;
+  vec3 sky;
+
+  if (topDown < 0.2) {
+    sky = blackTopColor;
+  } else if (topDown < 0.5) {
+    float k = smoothstep(0.2, 0.5, topDown);
+    sky = mix(blackTopColor, darkBlueColor, k);
+  } else if (topDown < 0.9) {
+    float k = smoothstep(0.5, 0.9, topDown);
+    sky = mix(darkBlueColor, blueColor, k);
+  } else {
+    float k = smoothstep(0.9, 1.0, topDown);
+    sky = mix(blueColor, lightBlueColor, k);
+  }
+
+  gl_FragColor = vec4(sky, 1.0);
+}
+`;
+
+const SKY_UNIFORMS = {
+  blackTopColor: { value: new Color("#05070d") },
+  darkBlueColor: { value: new Color("#1b2f57") },
+  blueColor: { value: new Color("#3f6fa4") },
+  lightBlueColor: { value: new Color("#8fbce0") }
+};
+
+function AtmosphereBackdrop() {
+  const dustPositions = useMemo(() => {
+    const count = 140;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i += 1) {
+      const radius = 14 + (i / count) * 50;
+      const angle = (i * 2.399963229728653) % (Math.PI * 2);
+      const jitter = ((i % 7) - 3) * 0.35;
+      positions[i * 3 + 0] = Math.cos(angle) * radius + jitter;
+      positions[i * 3 + 1] = 3 + (i % 17) * 0.65;
+      positions[i * 3 + 2] = Math.sin(angle) * radius - jitter;
+    }
+    return positions;
+  }, []);
+
+  return (
+    <group>
+      <mesh frustumCulled={false}>
+        <sphereGeometry args={[210, 36, 24]} />
+        <shaderMaterial
+          side={BackSide}
+          depthWrite={false}
+          uniforms={SKY_UNIFORMS}
+          vertexShader={SKY_VERTEX_SHADER}
+          fragmentShader={SKY_FRAGMENT_SHADER}
+        />
+      </mesh>
+
+      <mesh position={[0, -4.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[78, 72]} />
+        <meshBasicMaterial color="#8fbce0" transparent opacity={0.18} depthWrite={false} />
+      </mesh>
+
+      <points frustumCulled={false}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[dustPositions, 3]} />
+        </bufferGeometry>
+        <pointsMaterial color="#d8e6ff" size={0.42} sizeAttenuation transparent opacity={0.1} depthWrite={false} />
+      </points>
+    </group>
+  );
+}
+
 function useTextureLibrary(urls: string[]) {
   const [textures, setTextures] = useState<Record<string, TextureLoadState>>({});
   const requestedRef = useRef(new Set<string>());
@@ -256,7 +515,7 @@ function useTextureLibrary(urls: string[]) {
   return textures;
 }
 
-function PropInstanceMesh({
+const PropInstanceMesh = memo(function PropInstanceMesh({
   plan,
   assetState,
   textureState,
@@ -286,11 +545,9 @@ function PropInstanceMesh({
 
     const box = new Box3().setFromObject(assetState.scene);
     const size = new Vector3();
-    const center = new Vector3();
     box.getSize(size);
-    box.getCenter(center);
     const footprint = Math.max(size.x, size.z, 0.0001);
-    const fitScale = PROP_TARGET_FOOTPRINT / footprint;
+    const fitScale = getPropTargetFootprint(plan) / footprint;
 
     return {
       position: [
@@ -304,7 +561,7 @@ function PropInstanceMesh({
         defaultScale[2] * fitScale
       ]
     };
-  }, [assetState?.scene, plan.position, plan.scale, surfaceY]);
+  }, [assetState?.scene, plan.position, plan.scale, plan.tags, surfaceY]);
 
   useEffect(() => {
     const texture = textureState?.status === "ready" ? textureState.texture : undefined;
@@ -314,37 +571,9 @@ function PropInstanceMesh({
       const mesh = child as Mesh;
       if (!mesh.isMesh || !mesh.material) return;
       if (Array.isArray(mesh.material)) {
-        mesh.material = mesh.material.map((material) => {
-          const m = (material as MeshStandardMaterial).clone();
-          m.map = texture;
-          m.alphaMap = null;
-          m.transparent = true;
-          m.alphaTest = 0.5;
-          m.color.set("#ffffff");
-          m.metalness = 0;
-          m.roughness = 1;
-          m.emissiveMap = texture;
-          m.emissive.set("#ffffff");
-          m.emissiveIntensity = 0.25;
-          m.side = DoubleSide;
-          m.needsUpdate = true;
-          return m;
-        });
+        mesh.material = mesh.material.map((material) => getCachedPropMaterial(material as MeshStandardMaterial, texture));
       } else {
-        const material = (mesh.material as MeshStandardMaterial).clone();
-        material.map = texture;
-        material.alphaMap = null;
-        material.transparent = true;
-        material.alphaTest = 0.5;
-        material.color.set("#ffffff");
-        material.metalness = 0;
-        material.roughness = 1;
-        material.emissiveMap = texture;
-        material.emissive.set("#ffffff");
-        material.emissiveIntensity = 0.25;
-        material.side = DoubleSide;
-        material.needsUpdate = true;
-        mesh.material = material;
+        mesh.material = getCachedPropMaterial(mesh.material as MeshStandardMaterial, texture);
       }
     });
   }, [propAssetInstance, textureState?.status, textureState?.texture]);
@@ -352,10 +581,11 @@ function PropInstanceMesh({
   if (!canUsePropAsset) {
     if (!debugEnabled) return null;
     return (
-      <mesh position={[plan.position[0], surfaceY + plan.position[1], plan.position[2]]}>
-        <sphereGeometry args={[0.08, 12, 12]} />
-        <meshBasicMaterial color={assetState?.status === "failed" ? "#ff6b6b" : "#ffd369"} />
-      </mesh>
+      <mesh
+        position={[plan.position[0], surfaceY + plan.position[1], plan.position[2]]}
+        geometry={debugPropGeometry}
+        material={assetState?.status === "failed" ? failedPropMaterial : loadingPropMaterial}
+      />
     );
   }
 
@@ -367,9 +597,9 @@ function PropInstanceMesh({
       scale={normalizedPropTransform.scale}
     />
   );
-}
+});
 
-function HexTileMesh({
+const HexTileMesh = memo(function HexTileMesh({
   hex,
   selected,
   hovered,
@@ -411,7 +641,7 @@ function HexTileMesh({
   const biome = biomeStyle[hex.biome];
   const ownerColor = colorFromAddress(hex.owner);
   const level = hex.structure?.level ?? 0;
-  const baseHeight = 0.6 + (hex.biome === "Mountains" ? 0.25 : 0) + (hex.biome === "Desert" ? -0.08 : 0);
+  const baseHeight = getHexBaseHeight(hex.biome);
   const pulse = selected ? 1.12 : hovered ? 1.07 : 1;
   const highlightColor = selected ? "#ffffff" : "#56f0ff";
   const highlightOpacity = selected ? 0.95 : hovered ? 0.8 : 0;
@@ -421,6 +651,10 @@ function HexTileMesh({
   );
   const materialsRef = useRef<MeshStandardMaterial[]>([]);
   const fallbackMaterialRef = useRef<MeshStandardMaterial>(null);
+  const lastEmissiveColorRef = useRef<string>("#000000");
+  const lastEmissiveIntensityRef = useRef<number>(0);
+  const lastFallbackColorRef = useRef<string>("#000000");
+  const lastFallbackIntensityRef = useRef<number>(0);
   const structureAssetInstance = useMemo(
     () =>
       level > 0 && structureAssetState?.status === "ready" && structureAssetState.scene
@@ -555,30 +789,61 @@ function HexTileMesh({
   }, [biome.glow, biomeAssetInstance, biomeTextureState?.status, biomeTextureState?.texture]);
 
   const targetY = selected ? 0.3 : hovered ? 0.15 : 0;
+  const hasActiveAnimation = quake || selected || hovered;
+  const renderInlineProps = selected || quake;
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
-    groupRef.current.position.x = x + (quake ? Math.sin(clock.elapsedTime * 42) * 0.08 : 0);
-    groupRef.current.position.y += (targetY - groupRef.current.position.y) * 0.15;
+    if (!hasActiveAnimation && !mine && Math.abs(groupRef.current.position.y - targetY) < 0.001) {
+      return;
+    }
+
+    const targetX = x + (quake ? Math.sin(clock.elapsedTime * 42) * 0.08 : 0);
+    if (Math.abs(groupRef.current.position.x - targetX) > 0.0001) {
+      groupRef.current.position.x = targetX;
+    }
+    if (Math.abs(groupRef.current.position.y - targetY) > 0.0001) {
+      groupRef.current.position.y += (targetY - groupRef.current.position.y) * 0.15;
+    }
 
     const pulseIntensity = selected ? 0.85 + Math.sin(clock.elapsedTime * 5) * 0.45 : hovered ? 0.2 : mine ? 0.1 : 0;
+    const emissiveColor = selected || hovered ? biome.glow : mine ? "#56f0ff" : "#000000";
+
     if (canUseBiomeAsset) {
-      const emissiveColor = selected || hovered ? biome.glow : mine ? "#56f0ff" : "#000000";
-      for (const mat of materialsRef.current) {
-        mat.emissive.set(emissiveColor);
-        if (mat.emissiveIntensity !== pulseIntensity) {
-          mat.emissiveIntensity = pulseIntensity;
+      const colorChanged = lastEmissiveColorRef.current !== emissiveColor;
+      const intensityChanged = selected || lastEmissiveIntensityRef.current !== pulseIntensity;
+
+      if (colorChanged || intensityChanged) {
+        for (const mat of materialsRef.current) {
+          if (colorChanged) {
+            mat.emissive.set(emissiveColor);
+          }
+          if (intensityChanged) {
+            mat.emissiveIntensity = pulseIntensity;
+          }
         }
+        lastEmissiveColorRef.current = emissiveColor;
+        lastEmissiveIntensityRef.current = pulseIntensity;
       }
     } else if (fallbackMaterialRef.current) {
-      fallbackMaterialRef.current.emissive.set(selected || hovered ? biome.glow : mine ? "#56f0ff" : "#000000");
-      fallbackMaterialRef.current.emissiveIntensity = selected
+      const fallbackIntensity = selected
         ? 0.32 + Math.sin(clock.elapsedTime * 5) * 0.16
         : hovered
           ? 0.16
           : mine
             ? 0.08
             : 0;
+      const fallbackColorChanged = lastFallbackColorRef.current !== emissiveColor;
+      const fallbackIntensityChanged = selected || lastFallbackIntensityRef.current !== fallbackIntensity;
+
+      if (fallbackColorChanged) {
+        fallbackMaterialRef.current.emissive.set(emissiveColor);
+        lastFallbackColorRef.current = emissiveColor;
+      }
+      if (fallbackIntensityChanged) {
+        fallbackMaterialRef.current.emissiveIntensity = fallbackIntensity;
+        lastFallbackIntensityRef.current = fallbackIntensity;
+      }
     }
   });
 
@@ -629,28 +894,31 @@ function HexTileMesh({
           </mesh>
         )}
 
-        {propPlans.map((plan, index) => (
-          <PropInstanceMesh
-            key={`${hex.id}:prop:${plan.assetId}:${index}`}
-            plan={plan}
-            assetState={propAssetsByUrl[plan.url]}
-            textureState={plan.textureUrl ? propTexturesByUrl[plan.textureUrl] : undefined}
-            debugEnabled={debugProps}
-            surfaceY={normalizedBiomeTransform.topY}
-          />
-        ))}
+        {renderInlineProps ? (
+          <group>
+            {propPlans.map((plan, index) => (
+              <PropInstanceMesh
+                key={`${hex.id}:prop:${plan.assetId}:${index}`}
+                plan={plan}
+                assetState={propAssetsByUrl[plan.url]}
+                textureState={plan.textureUrl ? propTexturesByUrl[plan.textureUrl] : undefined}
+                debugEnabled={debugProps}
+                surfaceY={normalizedBiomeTransform.topY}
+              />
+            ))}
 
-        {debugProps
-          ? propPlans.map((plan, index) => (
-              <mesh
-                key={`${hex.id}:prop-debug:${plan.assetId}:${index}`}
-                position={[plan.position[0], normalizedBiomeTransform.topY + plan.position[1], plan.position[2]]}
-              >
-                <sphereGeometry args={[0.035, 10, 10]} />
-                <meshBasicMaterial color="#56f0ff" />
-              </mesh>
-            ))
-          : null}
+            {debugProps && (selected || hovered)
+              ? propPlans.map((plan, index) => (
+                  <mesh
+                    key={`${hex.id}:prop-debug:${plan.assetId}:${index}`}
+                    position={[plan.position[0], normalizedBiomeTransform.topY + plan.position[1], plan.position[2]]}
+                    geometry={debugPropGeometry}
+                    material={debugPropMaterial}
+                  />
+                ))
+              : null}
+          </group>
+        ) : null}
       </group>
 
       {hex.owner ? (
@@ -723,7 +991,7 @@ function HexTileMesh({
       ) : null}
     </group>
   );
-}
+});
 
 export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackgroundClick, earthquakeTargets = [], contextMenuActions }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -737,6 +1005,7 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
     if (local == null) return PROP_DEBUG_ENABLED;
     return ["1", "true", "yes", "on"].includes(local.toLowerCase());
   });
+  const [runtimePerf, setRuntimePerf] = useState<RuntimePerfStats | null>(null);
   const assets = useMapAssets();
   const textures = useMapTextures();
   const propPlansByHex = useMemo(() => {
@@ -772,6 +1041,146 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
   );
   const propAssetsByUrl = useGltfLibrary(propUrls);
   const propTexturesByUrl = useTextureLibrary(propTextureUrls);
+  const biomeSurfaceYByBiome = useMemo<Record<HexTile["biome"], number>>(
+    () => ({
+      Plains: getBiomeSurfaceTopY("Plains", MAP_3D_ASSETS[BIOME_ASSET_KEY.Plains], assets[BIOME_ASSET_KEY.Plains]),
+      Forest: getBiomeSurfaceTopY("Forest", MAP_3D_ASSETS[BIOME_ASSET_KEY.Forest], assets[BIOME_ASSET_KEY.Forest]),
+      Mountains: getBiomeSurfaceTopY("Mountains", MAP_3D_ASSETS[BIOME_ASSET_KEY.Mountains], assets[BIOME_ASSET_KEY.Mountains]),
+      Desert: getBiomeSurfaceTopY("Desert", MAP_3D_ASSETS[BIOME_ASSET_KEY.Desert], assets[BIOME_ASSET_KEY.Desert])
+    }),
+    [assets]
+  );
+  const propTemplateLibrary = useMemo(() => {
+    const templatesByUrl: Record<string, PropMeshTemplate[]> = {};
+    const footprintByUrl: Record<string, number> = {};
+
+    for (const url of propUrls) {
+      const assetState = propAssetsByUrl[url];
+      if (assetState?.status !== "ready" || !assetState.scene) continue;
+
+      const scene = assetState.scene;
+      const box = new Box3().setFromObject(scene);
+      const size = new Vector3();
+      box.getSize(size);
+      footprintByUrl[url] = Math.max(size.x, size.z, 0.0001);
+
+      scene.updateMatrixWorld(true);
+
+      const templates: PropMeshTemplate[] = [];
+      scene.traverse((child) => {
+        const mesh = child as Mesh;
+        if (!mesh.isMesh || !mesh.geometry || !mesh.material) return;
+
+        templates.push({
+          key: mesh.uuid,
+          geometry: mesh.geometry as BufferGeometry,
+          sourceMaterial: mesh.material as Material | Material[],
+          nodeMatrix: mesh.matrixWorld.clone()
+        });
+      });
+
+      templatesByUrl[url] = templates;
+    }
+
+    return { templatesByUrl, footprintByUrl };
+  }, [propAssetsByUrl, propUrls]);
+  const staticPropBatches = useMemo(() => {
+    const batchesByKey = new Map<string, PropInstanceBatch>();
+    const activeHexIds = new Set<string>();
+    const resolvedMaterialCache = new Map<string, Material | Material[]>();
+
+    if (selectedHex) activeHexIds.add(selectedHex);
+    for (const quakeHexId of earthquakeTargets) {
+      activeHexIds.add(quakeHexId);
+    }
+
+    const tileTransform = new Object3D();
+    const propTransform = new Object3D();
+    const tilePropMatrix = new Matrix4();
+    const instanceMatrix = new Matrix4();
+
+    for (const hex of hexes) {
+      if (activeHexIds.has(hex.id)) continue;
+
+      const plans = propPlansByHex[hex.id];
+      if (!plans?.length) continue;
+
+      const [tileX, tileZ] = tilePosition(hex.q, hex.r);
+      const baseHeight = getHexBaseHeight(hex.biome);
+      const surfaceY = biomeSurfaceYByBiome[hex.biome];
+
+      tileTransform.position.set(tileX, baseHeight / 2, tileZ);
+      tileTransform.rotation.set(0, Math.PI / 6, 0);
+      tileTransform.scale.set(1, 1, 1);
+      tileTransform.updateMatrix();
+
+      for (const plan of plans) {
+        const assetState = propAssetsByUrl[plan.url];
+        if (assetState?.status !== "ready") continue;
+
+        const templates = propTemplateLibrary.templatesByUrl[plan.url];
+        if (!templates?.length) continue;
+
+        const footprint = propTemplateLibrary.footprintByUrl[plan.url] ?? 0.0001;
+        const fitScale = getPropTargetFootprint(plan) / footprint;
+
+        const texture = plan.textureUrl ? propTexturesByUrl[plan.textureUrl]?.texture : undefined;
+        if (plan.textureUrl && !texture) continue;
+
+        propTransform.position.set(plan.position[0], surfaceY + plan.position[1], plan.position[2]);
+        propTransform.rotation.set(plan.rotation[0], plan.rotation[1], plan.rotation[2]);
+        propTransform.scale.set(plan.scale[0] * fitScale, plan.scale[1] * fitScale, plan.scale[2] * fitScale);
+        propTransform.updateMatrix();
+
+        tilePropMatrix.multiplyMatrices(tileTransform.matrix, propTransform.matrix);
+
+        for (const template of templates) {
+          let material: Material | Material[];
+          if (texture) {
+            const materialKey = `${plan.url}:${template.key}:${texture.uuid}`;
+            const cached = resolvedMaterialCache.get(materialKey);
+            if (cached) {
+              material = cached;
+            } else {
+              const resolved = getResolvedPropMaterial(template.sourceMaterial, texture);
+              resolvedMaterialCache.set(materialKey, resolved);
+              material = resolved;
+            }
+          } else {
+            material = template.sourceMaterial;
+          }
+
+          const batchKey = `${plan.url}:${template.key}:${texture ? texture.uuid : "none"}`;
+          const batch = batchesByKey.get(batchKey);
+
+          instanceMatrix.multiplyMatrices(tilePropMatrix, template.nodeMatrix);
+
+          if (batch) {
+            batch.matrices.push(instanceMatrix.clone());
+            continue;
+          }
+
+          batchesByKey.set(batchKey, {
+            key: batchKey,
+            geometry: template.geometry,
+            material,
+            matrices: [instanceMatrix.clone()]
+          });
+        }
+      }
+    }
+
+    return Array.from(batchesByKey.values()).filter((batch) => batch.matrices.length > 0);
+  }, [
+    biomeSurfaceYByBiome,
+    earthquakeTargets,
+    hexes,
+    propAssetsByUrl,
+    propPlansByHex,
+    propTemplateLibrary,
+    propTexturesByUrl,
+    selectedHex
+  ]);
   const propDebugStats = useMemo(() => {
     let totalPlanned = 0;
     for (const plans of Object.values(propPlansByHex) as PropInstancePlan[][]) {
@@ -813,7 +1222,7 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
     [contextMenu?.hexId, hexes, selectedHex]
   );
 
-  const openContextMenu = (hexId: string, clientX: number, clientY: number) => {
+  const openContextMenu = useMemo(() => (hexId: string, clientX: number, clientY: number) => {
     const bounds = wrapRef.current?.getBoundingClientRect();
     if (!bounds) return;
     setContextMenu({
@@ -821,7 +1230,12 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
       x: clientX - bounds.left + 10,
       y: clientY - bounds.top + 10
     });
-  };
+  }, []);
+
+  const handleSelect = useMemo(() => (hexId: string) => {
+    setContextMenu(null);
+    onHexClick(hexId);
+  }, [onHexClick]);
 
   useEffect(() => {
     if (!contextMenu || !wrapRef.current || !contextMenuRef.current) return;
@@ -911,22 +1325,30 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
     >
       <Canvas
         camera={{ position: [0, 28, 24], fov: 46 }}
-        shadows
+        dpr={[0.75, 1.25]}
+        gl={{ antialias: false, alpha: false, stencil: false, powerPreference: "high-performance" }}
         onPointerMissed={() => {
           setHoveredHex(undefined);
           setContextMenu(null);
           onBackgroundClick?.();
         }}
       >
+        <RuntimePerfSampler enabled={debugProps} onSample={setRuntimePerf} />
+        <AtmosphereBackdrop />
         <ambientLight intensity={0.62} />
-        <directionalLight position={[18, 28, 12]} intensity={1.1} castShadow />
+        <directionalLight position={[18, 28, 12]} intensity={1.1} />
         <directionalLight position={[-16, 12, -14]} intensity={0.34} />
+
+        <PropInstancedBatches batches={staticPropBatches} />
 
         <group>
           {hexes.map((hex) => {
             const mine = Boolean(hex.owner && myAddress && hex.owner.toLowerCase() === myAddress.toLowerCase());
             const biomeAssetKey = BIOME_ASSET_KEY[hex.biome as "Plains" | "Forest" | "Mountains" | "Desert"];
-            const structureAssetKey = (hex.structure?.level ?? 0) >= 2 ? "structure.level2" : "structure.level1";
+            const structureAssetKey =
+              (hex.structure?.level ?? 0) >= 2
+                ? STRUCTURE_ASSET_KEY[hex.biome as "Plains" | "Forest" | "Mountains" | "Desert"].level2
+                : STRUCTURE_ASSET_KEY[hex.biome as "Plains" | "Forest" | "Mountains" | "Desert"].level1;
             return (
               <HexTileMesh
                 key={`${hex.id}:${hex.structure?.level ?? 0}:${hex.structure?.builtAtRound ?? 0}`}
@@ -945,10 +1367,7 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
                 propTexturesByUrl={propTexturesByUrl}
                 debugProps={debugProps}
                 onHover={setHoveredHex}
-                onSelect={(hexId) => {
-                  onHexClick(hexId);
-                  setContextMenu(null);
-                }}
+                onSelect={handleSelect}
                 onOpenContext={openContextMenu}
               />
             );
@@ -969,19 +1388,14 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
           maxPolarAngle={Math.PI / 2 - (20 * Math.PI) / 180}
         />
 
-        <EffectComposer enableNormalPass={false} multisampling={0}>
+        <EffectComposer multisampling={0} enableNormalPass={false}>
           <SMAA />
-          <Bloom
-            mipmapBlur
-            intensity={0.78}
-            luminanceThreshold={0.13}
-            luminanceSmoothing={0.44}
-            radius={0.94}
-          />
-          <BrightnessContrast brightness={0.02} contrast={0.16} />
-          <Noise opacity={0.02} premultiply />
-          <Vignette eskil={false} offset={0.14} darkness={0.58} />
+          <HueSaturation hue={-0.02} saturation={0.3} />
+          <BrightnessContrast brightness={0.02} contrast={0.14} />
+          <Bloom intensity={0.32} luminanceThreshold={0.58} luminanceSmoothing={0.24} mipmapBlur />
+          <Vignette eskil={false} offset={0.18} darkness={0.24} />
         </EffectComposer>
+
       </Canvas>
 
       {contextMenu && selectedTile ? (
@@ -1044,6 +1458,15 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
         >
           <p style={{ margin: "0 0 0.3rem", fontWeight: 700 }}>Prop debug</p>
           <p style={{ margin: 0 }}>planned(total/selected): {propDebugStats.totalPlanned}/{propDebugStats.selectedPlanned}</p>
+          <p style={{ margin: 0 }}>
+            fps/ms: {runtimePerf ? `${runtimePerf.fps.toFixed(1)} / ${runtimePerf.frameMs.toFixed(1)}` : "-- / --"}
+          </p>
+          <p style={{ margin: 0 }}>
+            render(calls/tris): {runtimePerf ? `${runtimePerf.calls}/${runtimePerf.triangles}` : "--/--"}
+          </p>
+          <p style={{ margin: 0 }}>
+            gpu(geo/tex): {runtimePerf ? `${runtimePerf.geometries}/${runtimePerf.textures}` : "--/--"}
+          </p>
           <p style={{ margin: 0 }}>models(loading/ready/failed/total): {propDebugStats.modelsLoading}/{propDebugStats.modelsReady}/{propDebugStats.modelsFailed}/{propDebugStats.totalModels}</p>
           <p style={{ margin: 0 }}>textures(loading/ready/failed/total): {propDebugStats.texturesLoading}/{propDebugStats.texturesReady}/{propDebugStats.texturesFailed}/{propDebugStats.totalTextures}</p>
           {propDebugStats.loadingModelUrls.length ? (
