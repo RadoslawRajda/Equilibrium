@@ -102,6 +102,13 @@ type AssistantChatMessage = {
   content: string;
 };
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
+
+const resourceKeyToIndex = (key: string): number => {
+  const index = resourceKeys.indexOf(key as ResourceKey);
+  if (index < 0) throw new Error(`Invalid resource key: ${key}`);
+  return index;
+};
+
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
 const FALLBACK_TICKET_PRICE_WEI = parseEther("1");
@@ -1666,10 +1673,12 @@ function AppPage() {
           Math.min(Number(payload.times ?? 1) || 1, bankTradeBulkMaxLots)
         );
         const fn = times === 1 ? "tradeWithBank" : "tradeWithBankBulk";
+        const sellIndex = resourceKeyToIndex(payload.sellKind);
+        const buyIndex = resourceKeyToIndex(payload.buyKind);
         const args =
           times === 1
-            ? [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind)]
-            : [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind), BigInt(times)];
+            ? [lobbyId, BigInt(sellIndex), BigInt(buyIndex)]
+            : [lobbyId, BigInt(sellIndex), BigInt(buyIndex), BigInt(times)];
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
@@ -2625,6 +2634,7 @@ function AppPage() {
       assistantSending={assistantSending}
       assistantError={assistantError}
       onSendAssistantPrompt={() => void onSendAssistantPrompt()}
+      playerResources={projectedMe?.resources ?? { food: 0, wood: 0, stone: 0, ore: 0, energy: 0 }}
     />
       {!isSpectator ? (
         <TradeOffersModal

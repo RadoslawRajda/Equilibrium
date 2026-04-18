@@ -38,6 +38,8 @@ interface IkoPhoneProps {
   assistantSending: boolean;
   assistantError: string | null;
   onSendAssistantPrompt: () => void;
+  // Player resources
+  playerResources: Record<string, number>;
 }
 
 const RESOURCE_MAP = [
@@ -193,15 +195,15 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                   <button style={{ flex: 1, padding: '12px', background: '#f0f2f5', color: colors.pkoBlue, border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     <History size={14}/> History
                   </button>
-                  <button onClick={props.onTradeExecute} style={{ flex: 1, padding: '12px', background: colors.pkoBlue, color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    <Send size={14}/> Transfer
-                  </button>
                 </div>
               </div>
 
               <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '10px', fontWeight: '900', color: colors.pkoBlue, marginBottom: '6px', display: 'block' }}>SELL RESOURCES (X4)</label>
+                  <label style={{ fontSize: '10px', fontWeight: '900', color: colors.pkoBlue, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>SELL RESOURCES (X4)</span>
+                    <span style={{ fontSize: '9px', fontWeight: 'normal', color: '#666' }}>Have: {Math.floor((props.playerResources[props.bankSellKind] ?? 0) / 4)}</span>
+                  </label>
                   <CustomSelect value={props.bankSellKind} onSelect={props.setBankSellKind} type="sell" />
                 </div>
                 <div>
@@ -212,6 +214,51 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                   <label style={{ fontSize: '10px', fontWeight: '900', color: colors.pkoBlue, marginBottom: '6px', display: 'block' }}>QUANTITY (LOTS)</label>
                   <input type="number" min={1} max={props.bankTradeBulkMaxLots} value={props.bankBulkLots} onChange={(e) => props.setBankBulkLots(Number(e.target.value))} style={commonInputStyle} />
                 </div>
+
+                {/* Resources validation */}
+                {(() => {
+                  const sellResourceAmount = props.playerResources[props.bankSellKind] ?? 0;
+                  const requiredAmount = props.bankBulkLots * 4;
+                  const hasEnoughResources = sellResourceAmount >= requiredAmount;
+                  
+                  return (
+                    <>
+                      {!hasEnoughResources && (
+                        <div style={{ 
+                          background: '#ffe8e8', 
+                          border: '1px solid #ff6b6b', 
+                          borderRadius: '8px', 
+                          padding: '10px', 
+                          fontSize: '11px',
+                          color: '#c92a2a'
+                        }}>
+                          <strong>Not enough resources!</strong> Need {requiredAmount} {props.bankSellKind},you have {sellResourceAmount}
+                        </div>
+                      )}
+                      <button 
+                        onClick={props.onTradeExecute} 
+                        disabled={!hasEnoughResources}
+                        style={{ 
+                          width: '100%', 
+                          padding: '12px', 
+                          background: hasEnoughResources ? colors.pkoBlue : '#ccc', 
+                          color: '#fff', 
+                          border: 'none', 
+                          borderRadius: '10px', 
+                          fontWeight: 'bold', 
+                          fontSize: '13px', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          gap: '6px',
+                          cursor: hasEnoughResources ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        <Send size={14}/> Transfer
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
             </>
           )}
