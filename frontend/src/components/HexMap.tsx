@@ -418,7 +418,7 @@ const SKY_UNIFORMS = {
   blackTopColor: { value: new Color("#05070d") },
   darkBlueColor: { value: new Color("#1b2f57") },
   blueColor: { value: new Color("#3f6fa4") },
-  lightBlueColor: { value: new Color("#8fbce0") }
+  lightBlueColor: { value: new Color("#668baa") }
 };
 
 function AtmosphereBackdrop() {
@@ -450,10 +450,10 @@ function AtmosphereBackdrop() {
       </mesh>
 
       <mesh position={[0, -4.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[78, 72]} />
         <meshBasicMaterial color="#8fbce0" transparent opacity={0.18} depthWrite={false} />
       </mesh>
 
+      {/* To jest pył nieby */}
       <points frustumCulled={false}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[dustPositions, 3]} />
