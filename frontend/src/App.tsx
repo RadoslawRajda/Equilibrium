@@ -21,8 +21,10 @@ import {
   TreePine,
   UtensilsCrossed,
   Vote,
-  Wheat
+  Wheat,
+  Navigation
 } from "lucide-react";
+import { PkoLogoIcon } from "./utils/helpers/customIcons";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useAccount, useConnect, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
 import { createPublicClient, encodeFunctionData, formatEther, http, parseEther } from "viem";
@@ -62,6 +64,7 @@ import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActiv
 import { colorFromAddress } from "./utils/helpers/converters";
 import * as Select from '@radix-ui/react-select';
 import * as Accordion from '@radix-ui/react-accordion';
+import { IkoPhone } from "./components/IkoPhone";
 type ContractMeta = {
   contracts: {
     EntryPoint?: {
@@ -94,12 +97,10 @@ type ContractMeta = {
     };
   };
 };
-
 type AssistantChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
-
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
@@ -225,6 +226,7 @@ function AppPage() {
   const [isCreatingLobby, setIsCreatingLobby] = useState(false);
   const [startingLobby, setStartingLobby] = useState(false);
   const [nowSec, setNowSec] = useState(Math.floor(Date.now() / 1000));
+  const [isIkoOpen, setIsIkoOpen] = useState(false);
 
   const [tradeOfferDraft, setTradeOfferDraft] = useState<Record<ResourceKey, number>>({
     food: 0,
@@ -247,8 +249,8 @@ function AppPage() {
   { label: "ore", icon: Gem, color: "#ff9f6e" },
   { label: "energy", icon: BatteryCharging, color: "#56f0ff" }
 ];
-  const [bankSellKind, setBankSellKind] = useState(0);
-  const [bankBuyKind, setBankBuyKind] = useState(1);
+  const [bankSellKind, setBankSellKind] = useState<string>("food");
+  const [bankBuyKind, setBankBuyKind] = useState<string>("wood");
   const [bankBulkLots, setBankBulkLots] = useState(1);
   const [bankTradeBulkMaxLots, setBankTradeBulkMaxLots] = useState(48);
   const [craftCostHint, setCraftCostHint] = useState<string | null>(null);
@@ -2299,9 +2301,25 @@ function AppPage() {
         ))}
       </div>
 
-      <Accordion.Root type="single" collapsible className="AccordionRoot">
-        <Accordion.Item value="bank" className="action-group" style={{ paddingTop: '0px' }}>
+      <div 
+        className="iko-launcher-tile action-group" 
+        onClick={() => setIsIkoOpen(true)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          paddingLeft: '24px',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+      >
+        <PkoLogoIcon size={22} />
+        <h4>Open IKO</h4>
+      </div>
           
+<<<<<<< HEAD
           <Accordion.Trigger className="AccordionTrigger">
             <div className="TriggerLabel">
               <Landmark size={18} color="#acf38f" /> 
@@ -2519,6 +2537,9 @@ function AppPage() {
   </Accordion.Content>
 </Accordion.Item>
           </Accordion.Root>             
+=======
+                  
+>>>>>>> 286d459 (Przeniesienie zakładki Trade oraz Bank Do Telefonu z aplikacją IKO)
         <Accordion.Root type="single" collapsible className="AccordionRoot">
           <Accordion.Item value="crafting" className="action-group" style={{ paddingTop: '0px'}}>
             
@@ -2757,7 +2778,27 @@ function AppPage() {
         </div>
       </aside>
       ) : null}
-
+      {
+<IkoPhone 
+      isOpen={isIkoOpen}
+      onClose={() => setIsIkoOpen(false)}
+      bankSellKind={bankSellKind}
+      setBankSellKind={setBankSellKind}
+      bankBuyKind={bankBuyKind}
+      setBankBuyKind={setBankBuyKind}
+      bankBulkLots={bankBulkLots}
+      setBankBulkLots={setBankBulkLots}
+      bankTradeBulkMaxLots={bankTradeBulkMaxLots}
+      tradeEnergyCost={tradeEnergyCost}
+      openTradeOffersCount={openTradeOffersCount}
+      tradeOfferDraft={tradeOfferDraft}
+      setTradeOfferDraft={setTradeOfferDraft}
+      tradeRequestDraft={tradeRequestDraft}
+      setTradeRequestDraft={setTradeRequestDraft}
+      onTradeExecute={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
+      onBarterCreate={() => action("barter:create", { to: ZERO_ADDRESS, offer: { ...tradeOfferDraft }, request: { ...tradeRequestDraft } })}
+      onOpenOffersList={() => setTradeOffersModalOpen(true)}
+    />}
       {!isSpectator ? (
         <TradeOffersModal
           open={tradeOffersModalOpen}
@@ -2777,6 +2818,7 @@ function AppPage() {
           }}
         />
       ) : null}
+      
     </div>
   );
 }
