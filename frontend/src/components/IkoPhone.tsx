@@ -40,6 +40,9 @@ interface IkoPhoneProps {
   onSendAssistantPrompt: () => void;
   // Player resources
   playerResources: Record<string, number>;
+  // Trade notifications
+  tradeSuccessNotification: boolean;
+  tradeSuccessMessage: string;
 }
 
 const RESOURCE_MAP = [
@@ -153,6 +156,51 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
             <BatteryMedium size={18} strokeWidth={2} />
           </div>
         </div>
+        {/* SUCCESS NOTIFICATION - Push style */}
+        {props.tradeSuccessNotification && (
+          <div style={{
+            position: 'absolute',
+            top: '50px',
+            left: '12px',
+            right: '12px',
+            background: '#34C759',
+            color: '#fff',
+            padding: '12px 16px',
+            borderRadius: '12px',
+            fontSize: '13px',
+            fontWeight: 'bold',
+            boxShadow: '0 8px 16px rgba(52, 199, 89, 0.3)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            animation: 'slideDown 0.3s ease-out forwards, slideUp 0.3s ease-in 2.7s forwards'
+          }}>
+            <span>{props.tradeSuccessMessage}</span>
+            <style>{`
+              @keyframes slideDown {
+                from {
+                  transform: translateY(-100%);
+                  opacity: 0;
+                }
+                to {
+                  transform: translateY(0);
+                  opacity: 1;
+                }
+              }
+              @keyframes slideUp {
+                from {
+                  transform: translateY(0);
+                  opacity: 1;
+                }
+                to {
+                  transform: translateY(-100%);
+                  opacity: 0;
+                }
+              }
+            `}</style>
+          </div>
+        )}
 
         {/* HEADER - Zredukowany padding */}
         <div style={{ padding: '0px 16px',paddingBottom: '8px', background: '#fff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center' }}>
