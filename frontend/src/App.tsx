@@ -21,8 +21,10 @@ import {
   TreePine,
   UtensilsCrossed,
   Vote,
-  Wheat
+  Wheat,
+  Navigation
 } from "lucide-react";
+import { PkoLogoIcon } from "./utils/helpers/customIcons";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useAccount, useConnect, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
 import { createPublicClient, encodeFunctionData, formatEther, http, parseEther } from "viem";
@@ -62,6 +64,7 @@ import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActiv
 import { colorFromAddress } from "./utils/helpers/converters";
 import * as Select from '@radix-ui/react-select';
 import * as Accordion from '@radix-ui/react-accordion';
+import { IkoPhone } from "./components/IkoPhone";
 type ContractMeta = {
   contracts: {
     EntryPoint?: {
@@ -94,12 +97,10 @@ type ContractMeta = {
     };
   };
 };
-
 type AssistantChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
-
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
@@ -225,6 +226,7 @@ function AppPage() {
   const [isCreatingLobby, setIsCreatingLobby] = useState(false);
   const [startingLobby, setStartingLobby] = useState(false);
   const [nowSec, setNowSec] = useState(Math.floor(Date.now() / 1000));
+  const [isIkoOpen, setIsIkoOpen] = useState(false);
 
   const [tradeOfferDraft, setTradeOfferDraft] = useState<Record<ResourceKey, number>>({
     food: 0,
@@ -247,8 +249,8 @@ function AppPage() {
   { label: "ore", icon: Gem, color: "#ff9f6e" },
   { label: "energy", icon: BatteryCharging, color: "#56f0ff" }
 ];
-  const [bankSellKind, setBankSellKind] = useState(0);
-  const [bankBuyKind, setBankBuyKind] = useState(1);
+  const [bankSellKind, setBankSellKind] = useState<string>("food");
+  const [bankBuyKind, setBankBuyKind] = useState<string>("wood");
   const [bankBulkLots, setBankBulkLots] = useState(1);
   const [bankTradeBulkMaxLots, setBankTradeBulkMaxLots] = useState(48);
   const [craftCostHint, setCraftCostHint] = useState<string | null>(null);
@@ -2299,226 +2301,24 @@ function AppPage() {
         ))}
       </div>
 
-      <Accordion.Root type="single" collapsible className="AccordionRoot">
-        <Accordion.Item value="bank" className="action-group" style={{ paddingTop: '0px' }}>
+      <div 
+        className="iko-launcher-tile action-group" 
+        onClick={() => setIsIkoOpen(true)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          paddingLeft: '24px',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        }}
+      >
+        <PkoLogoIcon size={22} />
+        <h4>Open IKO</h4>
+      </div>
           
-          <Accordion.Trigger className="AccordionTrigger">
-            <div className="TriggerLabel">
-              <Landmark size={18} color="#acf38f" /> 
-              <h4>Bank</h4>
-            </div>
-            <ChevronDown size={16} className="AccordionChevron" />
-          </Accordion.Trigger>
-
-          <Accordion.Content className="AccordionContent">
-            <p className="selected-text">
-              Trade with the neutral bank: pay <strong>4× lots</strong> of one basic resource for <strong>1× lots</strong> of
-              another (4:1 per lot). One transaction can repeat up to <strong>{bankTradeBulkMaxLots}</strong> lots.
-              {tradeEnergyCost > 0 && (
-                <>
-                  {" "}
-                  Each trade action also costs <strong>{tradeEnergyCost} energy</strong>.
-                </>
-              )}
-            </p>
-
-            <div className="trade-line">
-              <label>Pay</label>
-              <Select.Root
-                value={bankSellKind.toString()}
-                onValueChange={(val) => setBankSellKind(Number(val))}
-                disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
-              >
-                <Select.Trigger className="SelectTrigger">
-                  <Select.Value placeholder="Select..."/>
-                  <Select.Icon><ChevronDown size={16} /></Select.Icon>
-                </Select.Trigger>
-
-                <Select.Portal>
-                  <Select.Content className="SelectContent" position="popper" sideOffset={5}>
-                    <Select.Viewport className="SelectViewport">
-                      {RESOURCE_MAP.map((res, index) => {
-                        const Icon = res.icon;
-                        return (
-                          <Select.Item key={index} className="SelectItem" value={index.toString()}>
-                            <Select.ItemText>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Icon size={16} color={res.color} />
-                                <span>{res.label} ×4</span>
-                              </div>
-                            </Select.ItemText>
-                          </Select.Item>
-                        );
-                      })}
-                    </Select.Viewport>
-                  </Select.Content>
-                </Select.Portal>
-              </Select.Root>
-            </div>
-
-            <div className="trade-line">
-              <label htmlFor="bank-buy">Receive</label>
-              <Select.Root
-                value={bankBuyKind.toString()}
-                onValueChange={(val) => setBankBuyKind(Number(val))}
-                disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
-              >
-                <Select.Trigger className="SelectTrigger">
-                  <Select.Value />
-                  <Select.Icon><ChevronDown size={16} /></Select.Icon>
-                </Select.Trigger>
-
-                <Select.Portal>
-                  <Select.Content className="SelectContent" position="popper" sideOffset={5}>
-                    <Select.Viewport className="SelectViewport">
-                      {RESOURCE_MAP.map((res, index) => {
-                        const Icon = res.icon;
-                        return (
-                          <Select.Item key={index} className="SelectItem" value={index.toString()}>
-                            <Select.ItemText>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Icon size={16} color={res.color} />
-                                <span>{res.label} ×1</span>
-                              </div>
-                            </Select.ItemText>
-                          </Select.Item>
-                        );
-                      })}
-                    </Select.Viewport>
-                  </Select.Content>
-                </Select.Portal>
-              </Select.Root>
-            </div>
-
-            <div className="trade-line">
-              <label htmlFor="bank-lots">Lots (1–{bankTradeBulkMaxLots})</label>
-              <input
-                id="bank-lots"
-                type="number"
-                className="TradeInput"
-                min={1}
-                max={bankTradeBulkMaxLots}
-                value={bankBulkLots}
-                onChange={(e) => setBankBulkLots(Math.max(1, Math.min(bankTradeBulkMaxLots, Number(e.target.value) || 1)))}
-                disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
-              disabled={activeLobby.status !== "running" || bankSellKind === bankBuyKind || Boolean(pendingAction)}
-            >
-              Execute bank trade{bankBulkLots > 1 ? ` (${bankBulkLots} lots)` : ""}
-            </button>
-          </Accordion.Content>
-        </Accordion.Item>
-      </Accordion.Root>
-
-        <Accordion.Root type="single" collapsible className="AccordionRoot">
-          <Accordion.Item value="trade" className="action-group" style={{ paddingTop: '0px' }}>
-  <Accordion.Trigger className="AccordionTrigger">
-    <div className="TriggerLabel">
-      <ArrowRightLeft size={18} color="#b1bb28"/>
-      <h4>Trade</h4>
-    </div>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-      {openTradeOffersCount > 0 && (
-        <span className="trade-offers-badge" style={{ fontSize: '12px' }}>
-          {openTradeOffersCount}
-        </span>
-      )}
-      <ChevronDown size={16} className="AccordionChevron" />
-    </div>
-  </Accordion.Trigger>
-
-  <Accordion.Content className="AccordionContent">
-    {/* Przycisk do modalu z ofertami */}
-    <button
-      type="button"
-      className="trade-offers-trigger"
-      style={{ width: '100%', marginBottom: '12px' }}
-      onClick={() => setTradeOffersModalOpen(true)}
-    >
-      <ArrowRightLeft size={16} aria-hidden />
-      Trading offers
-      <span className="trade-offers-badge">{openTradeOffersCount}</span>
-    </button>
-
-    <p className="selected-text">
-      Broadcast a trade offer. Anyone can accept if they can pay the request.
-      {tradeEnergyCost > 0 ? ` Trading costs ${tradeEnergyCost} energy per action.` : ""}
-    </p>
-
-    {/* Grid z inputami handlu */}
-    <div className="trade-grid" style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      gap: '12px',
-      padding: '10px' 
-    }}>
-      {/* Kolumna: YOU OFFER */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <strong style={{ fontSize: '11px', textAlign: 'center', opacity: 0.7 }}>YOU OFFER</strong>
-        {RESOURCE_MAP.map((res) => (
-          <div key={`offer-${res.label}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <res.icon size={16} color={res.color} />
-            <input 
-              className="trade-resource-input"
-              type="number"               
-              min={0} 
-              style={{ width: '45px', background: '#1a1a2e', border: '1px solid #333', color: 'white', borderRadius: '4px', padding: '2px 4px', fontSize: '13px' }}
-              value={tradeOfferDraft[res.label] || 0} 
-              onChange={(e) => setTradeOfferDraft(d => ({ ...d, [res.label]: Number(e.target.value) }))} 
-            />
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: '15px', opacity: 0.5 }}>
-        <ArrowRight size={20} />
-      </div>
-
-      {/* Kolumna: YOU WANT */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <strong style={{ fontSize: '11px', textAlign: 'center', opacity: 0.7 }}>YOU WANT</strong>
-        {RESOURCE_MAP.map((res) => (
-          <div key={`request-${res.label}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <res.icon size={16} color={res.color} />
-            <input 
-              className="trade-resource-input"
-              type="number" 
-              min={0} 
-              style={{ width: '45px', background: '#1a1a2e', border: '1px solid #333', color: 'white', borderRadius: '4px', padding: '2px 4px', fontSize: '13px' }}
-              value={tradeRequestDraft[res.label] || 0} 
-              onChange={(e) => setTradeRequestDraft(d => ({ ...d, [res.label]: Number(e.target.value) }))} 
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-
-    {/* Przycisk wysyłki */}
-    <button
-      style={{ marginTop: '10px', width: '100%' }}
-      onClick={async () => {
-        try {
-          await action("barter:create", {
-            to: ZERO_ADDRESS,
-            offer: { ...tradeOfferDraft },
-            request: { ...tradeRequestDraft }
-          });
-        } catch (e: any) {
-          setError(mapGameError(e));
-        }
-      }}
-    >
-      <ArrowRightLeft size={16} /> Send trade
-    </button>
-  </Accordion.Content>
-</Accordion.Item>
-          </Accordion.Root>             
         <Accordion.Root type="single" collapsible className="AccordionRoot">
           <Accordion.Item value="crafting" className="action-group" style={{ paddingTop: '0px'}}>
             
@@ -2757,7 +2557,27 @@ function AppPage() {
         </div>
       </aside>
       ) : null}
-
+      {
+<IkoPhone 
+      isOpen={isIkoOpen}
+      onClose={() => setIsIkoOpen(false)}
+      bankSellKind={bankSellKind}
+      setBankSellKind={setBankSellKind}
+      bankBuyKind={bankBuyKind}
+      setBankBuyKind={setBankBuyKind}
+      bankBulkLots={bankBulkLots}
+      setBankBulkLots={setBankBulkLots}
+      bankTradeBulkMaxLots={bankTradeBulkMaxLots}
+      tradeEnergyCost={tradeEnergyCost}
+      openTradeOffersCount={openTradeOffersCount}
+      tradeOfferDraft={tradeOfferDraft}
+      setTradeOfferDraft={setTradeOfferDraft}
+      tradeRequestDraft={tradeRequestDraft}
+      setTradeRequestDraft={setTradeRequestDraft}
+      onTradeExecute={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
+      onBarterCreate={() => action("barter:create", { to: ZERO_ADDRESS, offer: { ...tradeOfferDraft }, request: { ...tradeRequestDraft } })}
+      onOpenOffersList={() => setTradeOffersModalOpen(true)}
+    />}
       {!isSpectator ? (
         <TradeOffersModal
           open={tradeOffersModalOpen}
@@ -2777,6 +2597,7 @@ function AppPage() {
           }}
         />
       ) : null}
+      
     </div>
   );
 }
