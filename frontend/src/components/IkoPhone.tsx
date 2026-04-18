@@ -2,10 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   Wheat, TreePine, Pickaxe, Gem, BatteryCharging, 
   ShoppingBag, LogOut, ChevronDown,
-  ArrowRight, Send, History, Users,
+  ArrowRight, Send, History, Users, Sparkles,
   Signal, BatteryMedium, Building2, Landmark, Info
 } from 'lucide-react';
 import { PkoLogoIcon } from '../utils/helpers/customIcons';
+
+type AssistantChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 interface IkoPhoneProps {
   isOpen: boolean;
@@ -26,6 +31,13 @@ interface IkoPhoneProps {
   onTradeExecute: () => void; 
   onBarterCreate: () => void; 
   onOpenOffersList: () => void;
+  // Assistant props
+  assistantMessages: AssistantChatMessage[];
+  assistantPrompt: string;
+  setAssistantPrompt: (val: string) => void;
+  assistantSending: boolean;
+  assistantError: string | null;
+  onSendAssistantPrompt: () => void;
 }
 
 const RESOURCE_MAP = [
@@ -37,7 +49,7 @@ const RESOURCE_MAP = [
 ];
 
 export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
-  const [activeTab, setActiveTab] = useState<'bank' | 'market'>('bank');
+  const [activeTab, setActiveTab] = useState<'bank' | 'market' | 'assistant'>('bank');
   const [openSelect, setOpenSelect] = useState<'sell' | 'buy' | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -250,6 +262,98 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
               </div>
             </>
           )}
+
+          {activeTab === 'assistant' && (
+            <>
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '20px', fontWeight: '900', color: colors.pkoBlue }}>AI Assistant</div>
+                <p style={{ fontSize: '11.5px', color: '#5f666d', marginTop: '4px', lineHeight: '1.4' }}>
+                  Ask about rules, strategy, or get advice for the current game situation.
+                </p>
+              </div>
+
+              <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: '0', height: '85%' }}>
+                {/* Messages container */}
+                <div style={{
+                  background: colors.bgLight,
+                  borderRadius: '12px',
+                  padding: '12px',
+                  flex: 1,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  marginBottom: '12px'
+                }}>
+                  {props.assistantMessages.length === 0 ? (
+                    <p style={{ fontSize: '11px', color: '#999', margin: 0, textAlign: 'center', paddingTop: '20px' }}>
+                      Ask about rules or strategy for the current lobby situation.
+                    </p>
+                  ) : (
+                    props.assistantMessages.map((msg, idx) => (
+                      <div 
+                        key={`${msg.role}-${idx}`}
+                        style={{
+                          color: '#666666',
+                          background: msg.role === 'user' ? '#e8f4f8' : '#eeeded',
+                          borderLeft: `3px solid ${msg.role === 'user' ? '#56f0ff' : '#c0c5c2'}`,
+                          padding: '10px',
+                          borderRadius: '8px',
+                          fontSize: '11px'
+                        }}
+                      >
+                        <strong style={{ fontSize: '10px', display: 'block', marginBottom: '4px', color: colors.pkoBlue }}>
+                          {msg.role === 'user' ? 'You' : 'Assistant'}
+                        </strong>
+                        <p style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Input area - pinned at bottom */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 0, flexShrink: 0 }}>
+                  <textarea
+                    value={props.assistantPrompt}
+                    onChange={(e) => props.setAssistantPrompt(e.target.value)}
+                    placeholder="Type your question..."
+                    style={{
+                      ...commonInputStyle,
+                      padding: '10px',
+                      fontSize: '12px',
+                      fontWeight: 'normal' as const,
+                      minHeight: '60px',
+                      resize: 'none'
+                    }}
+                    disabled={props.assistantSending}
+                  />
+                  <button
+                    onClick={() => props.onSendAssistantPrompt()}
+                    disabled={props.assistantSending || !props.assistantPrompt.trim()}
+                    style={{
+                      padding: '12px',
+                      background: props.assistantSending || !props.assistantPrompt.trim() ? '#ccc' : colors.pkoBlue,
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontWeight: 'bold',
+                      fontSize: '12px',
+                      cursor: props.assistantSending || !props.assistantPrompt.trim() ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <Send size={14} /> {props.assistantSending ? 'Sending...' : 'Send'}
+                  </button>
+                  {/* {props.assistantError && (
+                    <p style={{ fontSize: '10px', color: colors.pkoRed, margin: 0 }}>{props.assistantError}</p>
+                  )} */}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* NAVIGATION & HOME INDICATOR */}
@@ -261,6 +365,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
           <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', width: '100%', flex: 1 }}>
             <NavButton active={activeTab === 'bank'} icon={<Building2 size={24}/>} label="Bank" onClick={() => setActiveTab('bank')} />
             <NavButton active={activeTab === 'market'} icon={<ShoppingBag size={24}/>} label="Market" onClick={() => setActiveTab('market')} badge={props.openTradeOffersCount} />
+            <NavButton active={activeTab === 'assistant'} icon={<Sparkles size={24}/>} label="AI" onClick={() => setActiveTab('assistant')} />
             <NavButton active={false} icon={<LogOut size={24}/>} label="Exit" onClick={props.onClose} />
           </div>
           
