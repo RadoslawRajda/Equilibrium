@@ -57,7 +57,23 @@ To daje bardziej standardowy i audytowalny kod przy zachowaniu modulow pod 4337 
 - [backend](backend) - serwer Express + Socket.IO, engine gry off-chain, AI i synchronizacja z kontraktami.
 - [contracts](contracts) - Hardhat, Solidity, testy i deploymenty lokalne.
 - [frontend](frontend) - aplikacja Vite/React z mapą heksow i UI do gry.
+- [agents/assistant](agents/assistant) - standalone assistant-agent service with an HTTP endpoint for questions about the current game state.
 - [docker-compose.yml](docker-compose.yml) - lokalny stack uruchomieniowy dla Ganache, Hardhat, backendu i frontendu.
+
+## Assistant Agent
+
+The repo includes an additional assistant-agent service running as a separate Docker image.
+
+- endpoint: POST /api/assistant/ask
+- body: lobbyId, playerAddress, prompt
+- response: answer + contextUsed (debug)
+- LLM mode: Ollama only (same pattern as player-agent, via OLLAMA_URL / OLLAMA_MODEL)
+
+The frontend chat placeholder reads assistant URL from ENV:
+
+- VITE_ASSISTANT_API_URL (default http://localhost:4060)
+
+Details: [docs/assistant-agent.md](docs/assistant-agent.md)
 
 ## Architektura
 
