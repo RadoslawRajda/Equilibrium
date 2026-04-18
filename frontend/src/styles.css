@@ -1233,6 +1233,33 @@ button.lobby-kick-btn.danger:disabled {
   background: rgba(6, 12, 36, 0.65);
 }
 
+.trade-modal-search svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.trade-modal-search input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.35;
+  padding: 0.18rem 0;
+}
+
+.trade-modal-search input::placeholder {
+  color: rgba(159, 176, 222, 0.74);
+}
+
+.trade-modal-search:focus-within {
+  border-color: rgba(86, 240, 255, 0.62);
+  box-shadow: 0 0 0 3px rgba(86, 240, 255, 0.12);
+}
+
 /* Kontener dla linii inputa z ikonką */
 .trade-compact-line {
   display: flex;
