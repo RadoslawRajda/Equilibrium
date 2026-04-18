@@ -2593,11 +2593,11 @@ function AppPage() {
       </Accordion.Item>
           </Accordion.Root>
 
-        <div className="log-list">
+        {/* <div className="log-list">
           {activeLobby.logs.slice(0, 8).map((log) => (
             <p key={log.id}>{new Date(log.timestamp).toLocaleTimeString()} • {log.text}</p>
-          ))}
-        </div>
+          ))} 
+        </div>*/}
       </aside>
       ) : null}
       <IkoPhone 
