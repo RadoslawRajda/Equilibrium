@@ -2594,49 +2594,13 @@ function AppPage() {
           </Accordion.Root>
 
         <div className="log-list">
-          <div className="action-group assistant-chat-panel">
-            <h4>Assistant (placeholder)</h4>
-            <div className="assistant-chat-messages">
-              {assistantMessages.length === 0 ? (
-                <p className="selected-text">Ask about rules or strategy for the current lobby situation.</p>
-              ) : (
-                assistantMessages.map((m, idx) => (
-                  <div key={`${m.role}-${idx}`} className={`assistant-chat-message assistant-chat-message--${m.role}`}>
-                    <strong>{m.role === "user" ? "You" : "Assistant"}</strong>
-                    <p>{m.content}</p>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <textarea
-              className="assistant-chat-input"
-              value={assistantPrompt}
-              onChange={(e) => setAssistantPrompt(e.target.value)}
-              placeholder="Type your question for the assistant..."
-              rows={3}
-              disabled={assistantSending || !hasAssistantInputs}
-            />
-
-            <button
-              type="button"
-              onClick={() => void onSendAssistantPrompt()}
-              disabled={assistantSending || !assistantPrompt.trim() || !hasAssistantInputs}
-            >
-              {assistantSending ? "Sending..." : "Send"}
-            </button>
-
-            {assistantError ? <p className="selected-text assistant-chat-error">{assistantError}</p> : null}
-          </div>
-
           {activeLobby.logs.slice(0, 8).map((log) => (
             <p key={log.id}>{new Date(log.timestamp).toLocaleTimeString()} • {log.text}</p>
           ))}
         </div>
       </aside>
       ) : null}
-      {
-<IkoPhone 
+      <IkoPhone 
       isOpen={isIkoOpen}
       onClose={() => setIsIkoOpen(false)}
       bankSellKind={bankSellKind}
@@ -2655,7 +2619,13 @@ function AppPage() {
       onTradeExecute={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
       onBarterCreate={() => action("barter:create", { to: ZERO_ADDRESS, offer: { ...tradeOfferDraft }, request: { ...tradeRequestDraft } })}
       onOpenOffersList={() => setTradeOffersModalOpen(true)}
-    />}
+      assistantMessages={assistantMessages}
+      assistantPrompt={assistantPrompt}
+      setAssistantPrompt={setAssistantPrompt}
+      assistantSending={assistantSending}
+      assistantError={assistantError}
+      onSendAssistantPrompt={() => void onSendAssistantPrompt()}
+    />
       {!isSpectator ? (
         <TradeOffersModal
           open={tradeOffersModalOpen}
