@@ -172,6 +172,16 @@ services:
       hardhat:
         condition: service_started
 
+  # Slither static-analysis audit — run with: docker compose --profile audit run --rm slither
+  slither:
+    image: trailofbits/eth-security-toolbox:latest
+    volumes:
+      - ./contracts:/contracts
+    working_dir: /contracts
+    entrypoint: ["/bin/sh", "-c"]
+    command: "npm install --silent 2>&1 | tail -3 && slither . --config-file slither.config.json"
+    profiles: ["audit"]
+
   frontend:
     image: node:20-alpine
     working_dir: /app
