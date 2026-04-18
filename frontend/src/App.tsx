@@ -135,6 +135,8 @@ const VOTE_PRESETS = [
   }
 ] as const;
 
+const LIMITED_VOTING_UI = true;
+
 /** GameCore `Resources` tuple — all five keys required for ABI encoding (sparse objects cause BigInt(undefined)). */
 function tradeResourcesTuple(value: Record<string, unknown> | null | undefined): {
   food: bigint;
@@ -213,6 +215,7 @@ function AppPage() {
   const [activeMapConfig, setActiveMapConfig] = useState<{ seed: string; radius: number } | null>(null);
   const [activeActionCosts, setActiveActionCosts] = useState<ActionCosts | null>(null);
   const [selectedHex, setSelectedHex] = useState<string | undefined>();
+  const [selectionClearedByUser, setSelectionClearedByUser] = useState(false);
   const [mapRenderer, setMapRenderer] = useState<MapRendererMode>(() => {
     const fromEnv = String(import.meta.env.VITE_MAP_RENDERER || "").toLowerCase();
     const envDefault: MapRendererMode = fromEnv === "2d" ? "2d" : "3d";
@@ -222,6 +225,8 @@ function AppPage() {
   });
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
+  const [mapErrorMessage, setMapErrorMessage] = useState("");
+  const [mapErrorPhase, setMapErrorPhase] = useState<"hidden" | "visible" | "fading">("hidden");
   const [isCreatingLobby, setIsCreatingLobby] = useState(false);
   const [startingLobby, setStartingLobby] = useState(false);
   const [nowSec, setNowSec] = useState(Math.floor(Date.now() / 1000));
@@ -812,6 +817,12 @@ function AppPage() {
     ? Math.max(0, projectedRound.deadlineSec - nowSec)
     : null;
 
+  const isRoundTimerDanger =
+    projectedRound.deadlineSec !== null &&
+    roundCountdown !== null &&
+    roundCountdown > 0 &&
+    roundCountdown <= 30;
+
   const projectedPlayers = useMemo(() => {
     if (!activeLobby) return [];
     if (activeLobby.status !== "running") return activeLobby.players;
@@ -1021,9 +1032,35 @@ function AppPage() {
       if (current && activeLobby.mapHexes.some((hex) => hex.id === current)) {
         return current;
       }
+      if (selectionClearedByUser) {
+        return undefined;
+      }
       return ownedHexId;
     });
-  }, [activeLobby, address]);
+  }, [activeLobby, address, selectionClearedByUser]);
+
+  useEffect(() => {
+    const isGameView = Boolean(activeLobby && activeLobby.status !== "waiting");
+    if (!isGameView || !error) {
+      setMapErrorPhase("hidden");
+      setMapErrorMessage("");
+      return;
+    }
+
+    setMapErrorMessage(error);
+    setMapErrorPhase("visible");
+    const fadeTimeout = window.setTimeout(() => setMapErrorPhase("fading"), 2000);
+    const hideTimeout = window.setTimeout(() => {
+      setMapErrorPhase("hidden");
+      setMapErrorMessage("");
+      setError("");
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(fadeTimeout);
+      window.clearTimeout(hideTimeout);
+    };
+  }, [activeLobby?.status, error]);
 
   const formatCountdown = (secondsLeft: number | null) => {
     if (secondsLeft === null) return "--:--";
@@ -1031,6 +1068,12 @@ function AppPage() {
     const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
     const seconds = String(totalSeconds % 60).padStart(2, "0");
     return `${minutes}:${seconds}`;
+  };
+
+  const dismissMapError = () => {
+    setMapErrorPhase("hidden");
+    setMapErrorMessage("");
+    setError("");
   };
 
   // Lobby creation uses LobbyManager + GameCore.bootstrap
@@ -2144,30 +2187,25 @@ function AppPage() {
 
       <main className={`map-main${isSpectator ? " map-main--spectator" : ""}`}>
         <div className="top-hud">
-          <div>
+          <div className="top-hud-brand">Equilibrium</div>
+          <div className="top-hud-primary">
             <h2>{activeLobby.name}</h2>
-            <p>
+            <div className="top-hud-subline">
               {isSpectator ? (
-                <span className="round-timer" style={{ marginRight: "0.5rem" }}>
+                <span className="top-hud-chip top-hud-chip--spectator">
                   Spectator
                 </span>
               ) : null}
-              {activeLobby.status === "zero-round" ? "Round 0: choose your starting hex" : `Round ${projectedRound.index}`}
-            </p>
+              <span className="top-hud-round-label">
+                {activeLobby.status === "zero-round" ? "Round 0: choose your starting hex" : `Round ${projectedRound.index}`}
+              </span>
+            </div>
           </div>
           <div className="top-hud-meta">
-            <span className="round-timer">{projectedRound.deadlineSec ? `Time left ${formatCountdown(roundCountdown)}` : "Waiting for round"}</span>
-            {activeMapConfig && <span className="round-timer">Map r={activeMapConfig.radius} seed={activeMapConfig.seed.slice(0, 10)}...</span>}
-            <button
-              type="button"
-              className="map-toggle-button"
-              onClick={() => setMapRenderer((current) => (current === "3d" ? "2d" : "3d"))}
-              title="Switch map renderer"
-            >
-              Map: {mapRenderer.toUpperCase()}
-            </button>
+            <span className={`round-timer${isRoundTimerDanger ? " round-timer--danger" : ""}`}>
+              {projectedRound.deadlineSec ? `Time left ${formatCountdown(roundCountdown)}` : "Waiting for round"}
+            </span>
           </div>
-          <p>Status: {activeLobby.status}</p>
         </div>
 
         <div className="map-stage">
@@ -2196,12 +2234,32 @@ function AppPage() {
             selectedHex={selectedHex}
             earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
             contextMenuActions={isSpectator ? undefined : hexContextMenuActions}
-            onBackgroundClick={() => setSelectedHex(undefined)}
+            onBackgroundClick={() => {
+              setSelectionClearedByUser(true);
+              setSelectedHex(undefined);
+            }}
             onHexClick={(id) => {
               if (pendingAction) return;
+              setSelectionClearedByUser(false);
               setSelectedHex(id);
             }}
           />
+
+          {mapErrorMessage ? (
+            <div className={`map-error-overlay map-error-overlay--${mapErrorPhase}`}>
+              <p className="map-error-banner">
+                <span>{mapErrorMessage}</span>
+                <button
+                  type="button"
+                  className="error-close-btn"
+                  onClick={dismissMapError}
+                  aria-label="Close error"
+                >
+                  &times;
+                </button>
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {isSpectator && selectedForDetails ? (
@@ -2217,21 +2275,6 @@ function AppPage() {
             This wallet is not a player in this lobby. Connect a wallet that holds a ticket for this match.
           </p>
         ) : null}
-        <div className="error-banner-container">
-          <p className={`error-banner ${error ? 'visible' : 'hidden'}`}>
-            <span>{error || " "}</span>
-            {error && (
-              <button 
-                type="button" 
-                className="error-close-btn" 
-                onClick={() => setError("")}
-                aria-label="Close error"
-              >
-                &times;
-              </button>
-            )}
-          </p>
-        </div>
       </main>
 
       {!isSpectator ? (
@@ -2565,90 +2608,108 @@ function AppPage() {
             <Accordion.Trigger className="AccordionTrigger">
               <div className="TriggerLabel">
                 <Vote size={18} color="#525252" />
-                <h4>Votes</h4>
+                <h4>{LIMITED_VOTING_UI ? "Round vote" : "Votes"}</h4>
               </div>
               <ChevronDown size={16} className="AccordionChevron" />
             </Accordion.Trigger>
 
             <Accordion.Content className="AccordionContent">
-              <p className="selected-text">
-                Stuck in round 0? Propose <strong>end game</strong> — if everyone votes yes, the lobby ends. 
-                While running, the same vote closes after the deadline or when all players have cast.
-              </p>
-
-              <button
-                type="button"
-                onClick={() =>
-                  action("vote:create", {
-                    title: "End game",
-                    effect: { special: "__END_GAME__" }
-                  })
-                }
-                disabled={Boolean(pendingAction) || (activeLobby.status !== "zero-round" && activeLobby.status !== "running")}
-              >
-                Propose end game
-              </button>
-
-              <div className="vote-preset-grid" style={{ marginTop: '10px' }}>
-                {VOTE_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={async () => {
-                      try {
-                        await action("vote:create", {
-                          lobbyId: activeLobby.id,
-                          by: address,
-                          title: preset.title,
-                          effect: preset.effect
-                        });
-                      } catch (e: any) {
-                        setError(mapGameError(e));
-                      }
-                    }}
+              {LIMITED_VOTING_UI ? (
+                <>
+                  <p className="selected-text">
+                    Propose a vote to end the current round early.
+                  </p>
+                  <button 
+                    type="button"
+                    style={{ width: '100%' }}
+                    onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })}
+                    disabled={activeLobby.status !== "running"}
                   >
-                    <Vote size={16} /> {preset.label}
+                    Propose end round
                   </button>
-                ))}
-              </div>
+                </>
+              ) : (
+                <>
+                  <p className="selected-text">
+                    Stuck in round 0? Propose <strong>end game</strong> — if everyone votes yes, the lobby ends. 
+                    While running, the same vote closes after the deadline or when all players have cast.
+                  </p>
 
-              {activeLobby.globalVotes && activeLobby.globalVotes.length > 0 && (
-                <div className="active-votes-section" style={{ marginTop: '15px' }}>
-                  {activeLobby.globalVotes
-                    .filter((vote: { resolved?: boolean }) => !vote.resolved)
-                    .slice(0, 8)
-                    .map((vote: any) => (
-                      <div key={vote.id} className="vote-item" style={{ borderTop: '1px solid #333', padding: '10px 0' }}>
-                        <p><strong>{vote.title}</strong></p>
-                        <p className="selected-text">
-                          {vote.effectKey === "__END_ROUND__"
-                            ? "End current round (unanimous yes, no “no” votes)"
-                            : vote.effectKey === "__END_GAME__"
-                              ? "End the match"
-                              : vote.effectKey}
-                        </p>
-                        <p className="selected-text">Closes after round {vote.closesAtRound}</p>
-                        <p className="selected-text">
-                          Votes: yes {vote.yesVotes} / no {vote.noVotes}
-                        </p>
-                        <div className="vote-buttons">
-                          <button
-                            type="button"
-                            onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}
-                            disabled={Boolean(pendingAction)}
-                          >
-                            Yes
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}
-                            disabled={Boolean(pendingAction)}
-                          >
-                            No
-                          </button>
-                        </div>
-                      </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      action("vote:create", {
+                        title: "End game",
+                        effect: { special: "__END_GAME__" }
+                      })
+                    }
+                    disabled={Boolean(pendingAction) || (activeLobby.status !== "zero-round" && activeLobby.status !== "running")}
+                  >
+                    Propose end game
+                  </button>
+
+                  <div className="vote-preset-grid" style={{ marginTop: '10px' }}>
+                    {VOTE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        onClick={async () => {
+                          try {
+                            await action("vote:create", {
+                              lobbyId: activeLobby.id,
+                              by: address,
+                              title: preset.title,
+                              effect: preset.effect
+                            });
+                          } catch (e: any) {
+                            setError(mapGameError(e));
+                          }
+                        }}
+                      >
+                        <Vote size={16} /> {preset.label}
+                      </button>
                     ))}
-                </div>
+                  </div>
+
+                  {activeLobby.globalVotes && activeLobby.globalVotes.length > 0 && (
+                    <div className="active-votes-section" style={{ marginTop: '15px' }}>
+                      {activeLobby.globalVotes
+                        .filter((vote: { resolved?: boolean }) => !vote.resolved)
+                        .slice(0, 8)
+                        .map((vote: any) => (
+                          <div key={vote.id} className="vote-item" style={{ borderTop: '1px solid #333', padding: '10px 0' }}>
+                            <p><strong>{vote.title}</strong></p>
+                            <p className="selected-text">
+                              {vote.effectKey === "__END_ROUND__"
+                                ? "End current round (unanimous yes, no “no” votes)"
+                                : vote.effectKey === "__END_GAME__"
+                                  ? "End the match"
+                                  : vote.effectKey}
+                            </p>
+                            <p className="selected-text">Closes after round {vote.closesAtRound}</p>
+                            <p className="selected-text">
+                              Votes: yes {vote.yesVotes} / no {vote.noVotes}
+                            </p>
+                            <div className="vote-buttons">
+                              <button
+                                type="button"
+                                onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}
+                                disabled={Boolean(pendingAction)}
+                              >
+                                Yes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}
+                                disabled={Boolean(pendingAction)}
+                              >
+                                No
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </>
               )}
             </Accordion.Content>
           </Accordion.Item>
@@ -2665,7 +2726,15 @@ function AppPage() {
         </Accordion.Trigger>
 
         <Accordion.Content className="AccordionContent">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+          <div className="game-options" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+            <button
+              type="button"
+              style={{ width: '100%' }}
+              onClick={() => setMapRenderer((current) => (current === "3d" ? "2d" : "3d"))}
+              title="Switch map renderer"
+            >
+              Map view: {mapRenderer.toUpperCase()}
+            </button>
             
             {/* Przycisk poddania się - wyświetlany tylko gdy gracz żyje i gra trwa */}
             {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
@@ -2683,15 +2752,17 @@ function AppPage() {
               </button>
             ) : null}
 
-            {/* Przycisk zakończenia rundy */}
-            <button 
-              type="button"
-              style={{ width: '100%' }}
-              onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })} 
-              disabled={activeLobby.status !== "running"}
-            >
-              Propose end round
-            </button>
+            {/* Temporarily hidden while LIMITED_VOTING_UI is enabled */}
+            {!LIMITED_VOTING_UI && (
+              <button 
+                type="button"
+                style={{ width: '100%' }}
+                onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })} 
+                disabled={activeLobby.status !== "running"}
+              >
+                Propose end round
+              </button>
+            )}
 
             {/* Przycisk rozłączenia portfela */}
             <button 
@@ -2709,6 +2780,13 @@ function AppPage() {
             >
               Disconnect wallet
             </button>
+
+            {activeMapConfig ? (
+              <div className="game-options-map-meta">
+                <span>{`Map radius = ${activeMapConfig.radius}`}</span>
+                <span>{`Seed: ${activeMapConfig.seed.slice(0, 10)}...`}</span>
+              </div>
+            ) : null}
 
           </div>
         </Accordion.Content>
