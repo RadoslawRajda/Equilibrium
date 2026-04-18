@@ -38,7 +38,7 @@ library GameConfig {
 
     /// Starting stock: enough for early builds; not so large that the mid-game never arrives.
     function startingResources() internal pure returns (uint256 food, uint256 wood, uint256 stone, uint256 ore, uint256 energy) {
-        return (2, 2, 2, 2, 100);
+        return (4, 4, 4, 4, 100);
     }
 
     function buildCost() internal pure returns (uint256 food, uint256 wood, uint256 stone, uint256 ore, uint256 energy) {

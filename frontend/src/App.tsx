@@ -12,6 +12,7 @@ import {
   Gem,
   Factory,
   Flag,
+  Flame,
   Hammer,
   Landmark,
   Leaf,
@@ -101,6 +102,13 @@ type AssistantChatMessage = {
   content: string;
 };
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
+
+const resourceKeyToIndex = (key: string): number => {
+  const index = resourceKeys.indexOf(key as ResourceKey);
+  if (index < 0) throw new Error(`Invalid resource key: ${key}`);
+  return index;
+};
+
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
 const FALLBACK_TICKET_PRICE_WEI = parseEther("1");
@@ -282,6 +290,18 @@ function AppPage() {
   const [assistantPrompt, setAssistantPrompt] = useState("");
   const [assistantSending, setAssistantSending] = useState(false);
   const [assistantError, setAssistantError] = useState<string | null>(null);
+  const [ikoTradeSuccessNotification, setIkoTradeSuccessNotification] = useState(false);
+  const [ikoTradeSuccessMessage, setIkoTradeSuccessMessage] = useState("");
+
+  // Auto-hide trade success notification
+  useEffect(() => {
+    if (ikoTradeSuccessNotification) {
+      const timer = setTimeout(() => {
+        setIkoTradeSuccessNotification(false);
+      }, 30000);
+      return () => clearTimeout(timer);
+    }
+  }, [ikoTradeSuccessNotification]);
   const lobbySnapshotRef = useRef<LobbyState | null>(null);
   const localHexOverridesRef = useRef(
     new Map<string, { owner: string; discoveredBy: string[]; structure?: LobbyState["mapHexes"][number]["structure"] }>()
@@ -1665,10 +1685,12 @@ function AppPage() {
           Math.min(Number(payload.times ?? 1) || 1, bankTradeBulkMaxLots)
         );
         const fn = times === 1 ? "tradeWithBank" : "tradeWithBankBulk";
+        const sellIndex = resourceKeyToIndex(payload.sellKind);
+        const buyIndex = resourceKeyToIndex(payload.buyKind);
         const args =
           times === 1
-            ? [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind)]
-            : [lobbyId, BigInt(payload.sellKind), BigInt(payload.buyKind), BigInt(times)];
+            ? [lobbyId, BigInt(sellIndex), BigInt(buyIndex)]
+            : [lobbyId, BigInt(sellIndex), BigInt(buyIndex), BigInt(times)];
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
@@ -1676,7 +1698,9 @@ function AppPage() {
           functionName: fn,
           args
         });
-        await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+        const receipt = await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+        setIkoTradeSuccessMessage(`Traded ${times} lot(s)!`);
+        setIkoTradeSuccessNotification(true);
       } else if (event === "vote:cast") {
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
@@ -2366,15 +2390,22 @@ function AppPage() {
             
           <Accordion.Trigger className="AccordionTrigger">
             <div className="TriggerLabel">
-              <Factory size={18} color="#e0b0ff" />
-              <h4>Crafting</h4>
+              <Flame size={18} color="#ff8c42" style={{ filter: 'drop-shadow(0 0 2px rgba(255,140,66,0.4))' }} />
+              <h4>Forge</h4>
             </div>
             <ChevronDown size={16} className="AccordionChevron" />
           </Accordion.Trigger>
 
             <Accordion.Content className="AccordionContent " >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', padding: '10px', background: 'rgba(255,140,66,0.1)', borderRadius: '8px', border: '1px solid rgba(255,140,66,0.3)' }}>
+                  <Gem size={16} color="#e0b0ff" />
+                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#e0b0ff' }}>
+                    {projectedMe?.craftedGoods ?? 0} / {victoryAlloyTarget ?? '?'} alloy
+                  </div>
+                </div>
+
                 <p className="selected-text">
-                  Smelt <strong>alloy</strong> from basics — costs scale with how much you already forged.
+                  Smelt <strong>alloy</strong> from resources — a rare metal that wins the game.
                   {victoryAlloyTarget != null && (
                     <>
                       {" "}
@@ -2383,12 +2414,16 @@ function AppPage() {
                   )}
                 </p>
 
-                <div className="selected-text">
-                  {craftCost
-                    ? `Next craft cost: ${formatCost(craftCost)}`
-                    : craftCostHint
-                      ? `Next craft cost: ${craftCostHint}`
-                      : "Loading craft preview…"}
+                <div style={{ padding: '10px', background: 'rgba(100,100,100,0.1)', borderRadius: '6px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <strong style={{ fontSize: '12px', color: '#ccc' }}>Cost per smelt:</strong>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {craftCost
+                      ? costStrip(craftCost)
+                      : craftCostHint
+                        ? <span className="selected-text" style={{ fontSize: '12px' }}>{craftCostHint}</span>
+                        : <span className="selected-text" style={{ fontSize: '12px' }}>Loading preview…</span>
+                    }
+                  </div>
                 </div>
 
                 <button
@@ -2396,7 +2431,7 @@ function AppPage() {
                   onClick={() => action("game:craft", {})}
                   disabled={activeLobby.status !== "running" || Boolean(pendingAction)}
                 >
-                  <Factory size={16} /> Craft alloy
+                  <Flame size={16} /> Smelt Alloy
                 </button>
             </Accordion.Content>
           </Accordion.Item>
@@ -2624,6 +2659,9 @@ function AppPage() {
       assistantSending={assistantSending}
       assistantError={assistantError}
       onSendAssistantPrompt={() => void onSendAssistantPrompt()}
+      playerResources={projectedMe?.resources ?? { food: 0, wood: 0, stone: 0, ore: 0, energy: 0 }}
+      tradeSuccessNotification={ikoTradeSuccessNotification}
+      tradeSuccessMessage={ikoTradeSuccessMessage}
     />
       {!isSpectator ? (
         <TradeOffersModal
