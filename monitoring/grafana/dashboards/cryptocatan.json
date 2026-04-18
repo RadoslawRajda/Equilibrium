@@ -1,0 +1,233 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "CryptoCatan2 — agent activity and on-chain state",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "On-Chain",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Current Block",
+      "type": "stat",
+      "targets": [
+        { "expr": "chain_head_block_number", "instant": true, "legendFormat": "block" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Total Lobbies",
+      "type": "stat",
+      "targets": [
+        { "expr": "lobbymanager_lobby_count", "instant": true, "legendFormat": "lobbies" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyETH", "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "tooltip": { "mode": "single" } },
+      "title": "Account ETH Balances",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "account_balance_eth", "legendFormat": "{{name}} ({{address}})" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "id": 4,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Lobby Status Distribution",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum by (status) (lobbymanager_lobby_status == 1)", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 101,
+      "title": "Player Agents",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 5,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Poll Iterations / min",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(player_agent_poll_iterations_total[1m]) * 60", "legendFormat": "{{agent}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 6,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Transactions / min",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(player_agent_transactions_total[1m]) * 60", "legendFormat": "{{agent}} / {{type}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "id": 7,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Transaction Errors / min",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(player_agent_transaction_errors_total[1m]) * 60", "legendFormat": "{{agent}} / {{type}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "id": 8,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Ollama Requests / min",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(player_agent_ollama_requests_total[1m]) * 60", "legendFormat": "{{agent}}" },
+        { "expr": "rate(player_agent_ollama_errors_total[1m]) * 60", "legendFormat": "{{agent}} errors" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 30 },
+      "id": 9,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Active Lobbies per Agent",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "player_agent_active_lobbies", "legendFormat": "{{agent}}" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 102,
+      "title": "Assistant Agent",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "id": 10,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Assistant Requests / min",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(assistant_http_requests_total[1m]) * 60", "legendFormat": "status={{status}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "id": 11,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Assistant P95 Request Latency",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, rate(assistant_http_request_duration_seconds_bucket[5m]))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.50, rate(assistant_http_request_duration_seconds_bucket[5m]))", "legendFormat": "p50" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "-- Default --" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "id": 12,
+      "options": { "tooltip": { "mode": "multi" } },
+      "title": "Assistant Ollama Calls / min",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(assistant_ollama_requests_total[1m]) * 60", "legendFormat": "requests" },
+        { "expr": "rate(assistant_ollama_errors_total[1m]) * 60", "legendFormat": "errors" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["cryptocatan", "agents", "onchain"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CryptoCatan2 Monitoring",
+  "uid": "cryptocatan2",
+  "version": 1
+}

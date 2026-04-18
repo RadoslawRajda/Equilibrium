@@ -108,6 +108,7 @@ services:
       POLL_MS: "8000"
       AGENT_NAME: Equinox
       PLAYER_IDENTITY_PATH: personas/equinox.md
+      METRICS_PORT: "9100"
 
   aurora-agent:
     <<: *player-runtime
@@ -121,6 +122,7 @@ services:
       POLL_MS: "8200"
       AGENT_NAME: Aurora
       PLAYER_IDENTITY_PATH: personas/aurora.md
+      METRICS_PORT: "9100"
 
   crucible-agent:
     <<: *player-runtime
@@ -134,6 +136,7 @@ services:
       POLL_MS: "8400"
       AGENT_NAME: Crucible
       PLAYER_IDENTITY_PATH: personas/crucible.md
+      METRICS_PORT: "9100"
 
   drift-agent:
     <<: *player-runtime
@@ -147,6 +150,7 @@ services:
       POLL_MS: "8600"
       AGENT_NAME: Drift
       PLAYER_IDENTITY_PATH: personas/drift.md
+      METRICS_PORT: "9100"
 
   assistant-agent:
     image: cryptocatan/assistant-agent:local
@@ -171,6 +175,45 @@ services:
         condition: service_started
       hardhat:
         condition: service_started
+
+  # --------------------------------------------------------------------------
+  # Monitoring stack (Prometheus + Grafana + on-chain exporter)
+  # --------------------------------------------------------------------------
+  chain-exporter:
+    build: ./monitoring/chain-exporter
+    environment:
+      RPC_URL: http://ganache:8545
+      DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
+      POLL_MS: "10000"
+      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+    volumes:
+      - ./contracts/deployments:/contracts/deployments:ro
+    depends_on:
+      - ganache
+      - hardhat
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - chain-exporter
+      - assistant-agent
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
 
   # Slither static-analysis audit — run with: docker compose --profile audit run --rm slither
   slither:

@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Player agents — each exposes /metrics on port 9100 within its container
+  - job_name: "player-agents"
+    static_configs:
+      - targets:
+          - "equinox-agent:9100"
+          - "aurora-agent:9100"
+          - "crucible-agent:9100"
+          - "drift-agent:9100"
+    metrics_path: /metrics
+
+  # Assistant agent — metrics on the same port as the REST API (4060)
+  - job_name: "assistant-agent"
+    static_configs:
+      - targets: ["assistant-agent:4060"]
+    metrics_path: /metrics
+
+  # On-chain exporter
+  - job_name: "chain-exporter"
+    static_configs:
+      - targets: ["chain-exporter:9100"]
+    metrics_path: /metrics
