@@ -4,7 +4,7 @@
 Proposed
 
 ## Context
-CryptoCatan currently splits gameplay between three layers:
+Equilibrium currently splits gameplay between three layers:
 - Solidity contracts that already own part of the game state.
 - A Node/Express/Socket.IO backend that still mutates a parallel off-chain engine.
 - A React/Vite frontend that reconstructs part of the game state and projects timers locally.

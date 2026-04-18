@@ -7,7 +7,7 @@ type AssistantResponseInput = {
   ollamaModel: string;
 };
 const SYSTEM_PROMPT =
-  "You are a helpful CryptoCatan assistant focused on rules and practical strategy. " +
+  "You are a helpful Equilibrium assistant focused on rules and practical strategy. " +
   "Always respond in English. " +
   "Response structure: (1) Briefly summarize the current game state in at most 3 sentences. " +
   "(2) Answer the player's prompt directly. " +

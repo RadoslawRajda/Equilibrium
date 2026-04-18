@@ -29,7 +29,7 @@ Ollama only (same pattern as player-agent):
 
 - Uses `OLLAMA_URL` and `OLLAMA_MODEL` by default.
 - Supports optional overrides `ASSISTANT_OLLAMA_URL` and `ASSISTANT_OLLAMA_MODEL`.
-- Uses a fixed system prompt tailored for a helpful CryptoCatan rules + strategy assistant.
+- Uses a fixed system prompt tailored for a helpful Equilibrium rules + strategy assistant.
 
 ## ENV
 

@@ -4,6 +4,15 @@ import { mnemonicToAccount } from "viem/accounts";
 
 import { loadDeployments, loadDeploymentsWhenReady, envStr, envNum } from "./config.js";
 import { resolvePromptPath } from "./promptPaths.js";
+import {
+  activeLobbies,
+  ollamaErrors,
+  ollamaRequests,
+  pollTotal,
+  startMetricsServer,
+  txErrors,
+  txTotal
+} from "./metrics.js";
 import { buildSnapshot, trimSnapshotForLlm } from "./snapshot.js";
 import { askOllama, askOllamaStartingHex, summarizeActionsForLog } from "./llm.js";
 import { mergePlanWithHeuristic } from "./heuristics.js";
@@ -27,6 +36,7 @@ const MNEMONIC = envStr(
 );
 const ACCOUNT_INDEX = envNum("AGENT_ACCOUNT_INDEX", 10);
 const AGENT_NAME = envStr("AGENT_NAME", "Equinox");
+const METRICS_PORT = envNum("METRICS_PORT", 9100);
 const SNAPSHOT_MAX_TILES = (() => {
   const p = process.env.PLAYER_SNAPSHOT_MAX_TILES;
   if (p != null && p !== "") return envNum("PLAYER_SNAPSHOT_MAX_TILES", 56);
@@ -72,6 +82,8 @@ async function waitUntilBytecode(
 }
 
 async function main() {
+  startMetricsServer(METRICS_PORT);
+
   let dep;
   if (process.env.PLAYER_SKIP_ERC8004_REGISTRY_WAIT === "1") {
     dep = loadDeployments();
@@ -210,8 +222,10 @@ async function main() {
           account: account.address
         } as never);
         await publicClient.waitForTransactionReceipt({ hash: h });
+        txTotal.inc({ agent: AGENT_NAME, type: "buyTicket" });
         console.log(`[player-agent] bought ticket lobby ${lobbyIdStr}`);
       } catch (e) {
+        txErrors.inc({ agent: AGENT_NAME, type: "buyTicket" });
         console.warn(
           `[player-agent] buyTicket failed lobby ${lobbyIdStr} (lobby full or RPC error); cannot join without ticket`,
           e
@@ -233,6 +247,7 @@ async function main() {
       account: account.address
     });
     await publicClient.waitForTransactionReceipt({ hash: h2 });
+    txTotal.inc({ agent: AGENT_NAME, type: "joinLobby" });
     gcJoinAttempted.add(lobbyIdStr);
     console.log(`[player-agent] joinLobby ok lobby ${lobbyIdStr}`);
   };
@@ -309,6 +324,7 @@ async function main() {
         let thought = "";
 
         try {
+          ollamaRequests.inc({ agent: AGENT_NAME });
           const parsed = await askOllamaStartingHex(OLLAMA_URL, OLLAMA_MODEL, JSON.stringify(payload));
           if (parsed) {
             const hid = normalizeHexId(parsed.hexId);
@@ -321,6 +337,7 @@ async function main() {
             }
           }
         } catch (e) {
+          ollamaErrors.inc({ agent: AGENT_NAME });
           console.warn("[player-agent] zero-round Ollama error", e);
         }
 
@@ -343,9 +360,11 @@ async function main() {
             chain,
             account.address
           );
+          txTotal.inc({ agent: AGENT_NAME, type: "pickStartingHex" });
           console.log(`[player-agent] zero-round hex ${chosen.id} lobby ${lobbyIdStr} — ${thought}`);
           break;
         } catch (e) {
+          txErrors.inc({ agent: AGENT_NAME, type: "pickStartingHex" });
           excluded.add(chosen.id);
           console.warn(
             `[player-agent] pickStartingHex ${chosen.id} failed (often already taken), retrying`,
@@ -365,8 +384,10 @@ async function main() {
     const user = JSON.stringify(snap);
     let plan;
     try {
+      ollamaRequests.inc({ agent: AGENT_NAME });
       plan = await askOllama(OLLAMA_URL, OLLAMA_MODEL, user);
     } catch (e) {
+      ollamaErrors.inc({ agent: AGENT_NAME });
       console.warn("[player-agent] Ollama failed, noop", e);
       plan = { thought: "ollama-down", actions: [{ type: "noop" }] };
     }
@@ -374,10 +395,12 @@ async function main() {
     const act = summarizeActionsForLog(merged.actions);
     console.log(`[player-agent] round lobby ${lobbyIdStr} — ${merged.thought} · ${act}`);
     await executeRoundBatch(walletClient, publicClient, gc, gcAbi, lobbyId, merged, chain, account.address);
+    txTotal.inc({ agent: AGENT_NAME, type: "roundBatch" });
   };
 
   for (;;) {
     try {
+      pollTotal.inc({ agent: AGENT_NAME });
       const lobbyCount = Number(
         (await publicClient.readContract({
           address: lm,
@@ -386,6 +409,7 @@ async function main() {
         })) as bigint
       );
 
+      let ticketedLobbies = 0;
       for (let i = 1; i <= lobbyCount; i += 1) {
         const invited = (await publicClient.readContract({
           address: lm,
@@ -405,6 +429,7 @@ async function main() {
           args: [lobbyId, account.address]
         })) as boolean;
         if (!hasT) continue;
+        ticketedLobbies += 1;
         await claimLobbyRewardsIfWinner(
           walletClient,
           publicClient,
@@ -417,6 +442,7 @@ async function main() {
         await ensureTicketAndJoin(String(i));
         await playLobby(String(i));
       }
+      activeLobbies.set({ agent: AGENT_NAME }, ticketedLobbies);
     } catch (e) {
       console.error("[player-agent] loop error", e);
     }

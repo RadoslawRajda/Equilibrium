@@ -1,0 +1,14 @@
+{
+  "name": "@cryptocatan/chain-exporter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "prom-client": "^15.1.3",
+    "viem": "^2.21.0"
+  }
+}
