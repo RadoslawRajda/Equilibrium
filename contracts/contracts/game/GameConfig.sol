@@ -94,7 +94,7 @@ library GameConfig {
         return 48;
     }
 
-    /// @dev Per-resource ceiling on *grants* in one `gameMasterAdjustResources` call (burns uncapped by player balance).
+    /// @dev Reserved ceiling for future external resource seeding / balance sync helpers.
     function gameMasterMaxGrantPerResource() internal pure returns (uint256) {
         return 24;
     }

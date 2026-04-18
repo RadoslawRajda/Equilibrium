@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
-import { IAgentStatsRegistryBase } from "./ERC8004PlayerAgentRegistry.sol";
-import { IExperienceStatsRegistry } from "./LobbyManager.sol";
+import { IAgentStatsRegistryBase } from "../ai/ERC8004PlayerAgentRegistry.sol";
+import { IExperienceStatsRegistry } from "../lobby/LobbyManager.sol";
 
 contract ExperienceStats is Ownable2Step, IAgentStatsRegistryBase, IExperienceStatsRegistry {
     struct PlayerStats {

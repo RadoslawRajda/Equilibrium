@@ -14,7 +14,8 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      chainId: 1337
+      chainId: 1337,
+      allowUnlimitedContractSize: true
     },
     /** Same mnemonic as docker-compose Anvil — use for deploy from the host to http://127.0.0.1:8545 */
     localhost: {
