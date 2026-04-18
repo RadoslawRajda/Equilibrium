@@ -2109,7 +2109,7 @@ function AppPage() {
           <ActiveMapComponent
             hexes={activeLobby.mapHexes}
             myAddress={isSpectator ? undefined : address}
-            selectedHex={highlightedHex}
+            selectedHex={selectedHex}
             earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
             contextMenuActions={isSpectator ? undefined : hexContextMenuActions}
             onBackgroundClick={() => setSelectedHex(undefined)}
