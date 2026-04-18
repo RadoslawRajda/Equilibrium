@@ -56,6 +56,7 @@ contract ERC8004AIGameMasterAdapter is Ownable2Step, ReentrancyGuard {
     }
 
     function setAgent(address newAgent) external onlyOwner {
+        require(newAgent != address(0), "Agent address required");
         emit AgentUpdated(agent, newAgent);
         agent = newAgent;
     }

@@ -61,7 +61,17 @@ contract ERC8004PlayerAgentIdentity is ERC165, IERC8004PlayerAgent {
     }
 }
 
-contract ERC8004PlayerAgentRegistry is Ownable2Step {
+/// @dev Matches the IAgentStatsRegistry interface defined in LobbyManager
+interface IAgentStatsRegistryBase {
+    function recordLobbyResult(uint256 lobbyId, address[] calldata players, address winner) external;
+}
+
+/// @dev Matches the IRegisteredAgentLookup interface defined in LobbyManager
+interface IRegisteredAgentLookupBase {
+    function getAgentByController(address controller) external view returns (address);
+}
+
+contract ERC8004PlayerAgentRegistry is Ownable2Step, IAgentStatsRegistryBase, IRegisteredAgentLookupBase {
     struct AgentStats {
         uint256 gamesPlayed;
         uint256 gamesWon;
@@ -75,6 +85,7 @@ contract ERC8004PlayerAgentRegistry is Ownable2Step {
     mapping(address => AgentStats) public agentStats;
     mapping(uint256 => bool) public lobbyResultRecorded;
     address[] private agentList;
+    mapping(address => string) public agentNames;
 
     /// @notice Address allowed to write game outcomes (`LobbyManager`).
     address public statsUpdater;
@@ -92,6 +103,7 @@ contract ERC8004PlayerAgentRegistry is Ownable2Step {
     constructor() Ownable(msg.sender) {}
 
     function setStatsUpdater(address newUpdater) external onlyOwner {
+        require(newUpdater != address(0), "Updater address required");
         emit StatsUpdaterUpdated(statsUpdater, newUpdater);
         statsUpdater = newUpdater;
     }
@@ -140,6 +152,7 @@ contract ERC8004PlayerAgentRegistry is Ownable2Step {
 
     /// @notice Paginated listing for UIs / bots (reads `agentName` from each identity contract).
     function listAgents(uint256 offset, uint256 max) external view returns (ListedAgent[] memory) {
+        require(max <= 100, "Max limit exceeded");
         uint256 total = agentList.length;
         if (offset >= total) {
             return new ListedAgent[](0);
@@ -153,12 +166,7 @@ contract ERC8004PlayerAgentRegistry is Ownable2Step {
         for (uint256 i = 0; i < n; i++) {
             address agent = agentList[offset + i];
             address controller = agentToController[agent];
-            string memory name;
-            try ERC8004PlayerAgentIdentity(agent).agentName() returns (string memory nm) {
-                name = nm;
-            } catch {
-                name = "";
-            }
+            string memory name = agentNames[agent];
             out[i] = ListedAgent({ agent: agent, controller: controller, name: name });
         }
         return out;
@@ -187,6 +195,7 @@ contract ERC8004PlayerAgentRegistry is Ownable2Step {
     function _registerAgent(address controller, address agent, string calldata name, string calldata metadataURI) internal {
         controllerToAgent[controller] = agent;
         agentToController[agent] = controller;
+        agentNames[agent] = name;
         AgentStats storage stats = agentStats[agent];
         if (stats.registeredAt == 0) {
             stats.registeredAt = block.timestamp;

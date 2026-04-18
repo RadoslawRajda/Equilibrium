@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IActorAuthority {
     function resolveActor(address caller, bytes calldata callData) external view returns (address);
@@ -31,6 +32,7 @@ abstract contract ActorAware is Ownable2Step {
     event ActorAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
 
     function setActorAuthority(address newAuthority) external onlyOwner {
+        require(newAuthority != address(0), "Authority address required");
         emit ActorAuthorityUpdated(actorAuthority, newAuthority);
         actorAuthority = newAuthority;
     }
@@ -51,7 +53,7 @@ contract DirectActorAuthority is IActorAuthority {
     }
 }
 
-contract SessionForwarderActorAuthority is IActorAuthority, Ownable {
+contract SessionForwarderActorAuthority is IActorAuthority, ISessionPolicyRegistry, Ownable, ReentrancyGuard {
     constructor() Ownable(msg.sender) {}
 
     struct SessionPolicy {
@@ -82,16 +84,19 @@ contract SessionForwarderActorAuthority is IActorAuthority, Ownable {
     event SessionSponsored(address indexed sessionKey, uint256 indexed lobbyId, uint256 amount, address indexed receiver);
 
     function setSponsorPool(address newPool) external onlyOwner {
+        require(newPool != address(0), "SponsorPool address required");
         emit SponsorPoolUpdated(sponsorPool, newPool);
         sponsorPool = newPool;
     }
 
     function setTrustedForwarder(address newForwarder) external onlyOwner {
+        require(newForwarder != address(0), "Forwarder address required");
         emit TrustedForwarderUpdated(trustedForwarder, newForwarder);
         trustedForwarder = newForwarder;
     }
 
     function setLobbyManager(address newLobbyManager) external onlyOwner {
+        require(newLobbyManager != address(0), "LobbyManager address required");
         emit LobbyManagerUpdated(lobbyManager, newLobbyManager);
         lobbyManager = newLobbyManager;
     }
@@ -138,7 +143,7 @@ contract SessionForwarderActorAuthority is IActorAuthority, Ownable {
         emit SessionPolicyUpdated(sessionKey, actor, lobbyId, expiresAt, maxSponsoredWei, active);
     }
 
-    function sponsorSessionAction(address sessionKey, uint256 amount, address payable receiver) external onlyOwner {
+    function sponsorSessionAction(address sessionKey, uint256 amount, address payable receiver) external onlyOwner nonReentrant {
         SessionPolicy memory policy = sessionPolicies[sessionKey];
         require(policy.active, "Session inactive");
         require(policy.actor != address(0), "Session actor missing");

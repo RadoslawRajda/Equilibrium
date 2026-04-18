@@ -22,7 +22,8 @@ contract LobbySessionPaymaster is BasePaymaster {
         override
         returns (bytes memory context, uint256 validationData)
     {
-        (bool allowed,,,,) = hook.previewSponsorship(userOp.sender, maxCost);
+        (bool allowed, uint256 lobbyId, address actor, uint256 remainingWei, uint64 expiresAt) = hook.previewSponsorship(userOp.sender, maxCost);
+        lobbyId; actor; remainingWei; expiresAt;
         require(allowed, "Lobby session not sponsored");
         return (abi.encode(userOp.sender), 0);
     }

@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-18T11:31:25.739Z",
+  "deployedAt": "2026-04-18T14:57:52.973Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -1222,6 +1222,11 @@
           "type": "error"
         },
         {
+          "inputs": [],
+          "name": "ReentrancyGuardReentrantCall",
+          "type": "error"
+        },
+        {
           "anonymous": false,
           "inputs": [
             {
@@ -2408,6 +2413,27 @@
       "address": "0x30753E4A8aad7F8597332E813735Def5dD395028",
       "abi": [
         {
+          "inputs": [],
+          "name": "FailedCall",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "balance",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "needed",
+              "type": "uint256"
+            }
+          ],
+          "name": "InsufficientBalance",
+          "type": "error"
+        },
+        {
           "inputs": [
             {
               "internalType": "address",
@@ -2427,6 +2453,11 @@
             }
           ],
           "name": "OwnableUnauthorizedAccount",
+          "type": "error"
+        },
+        {
+          "inputs": [],
+          "name": "ReentrancyGuardReentrantCall",
           "type": "error"
         },
         {
@@ -2465,6 +2496,25 @@
             }
           ],
           "name": "AgentStatsRegistryUpdated",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": false,
+              "internalType": "uint128",
+              "name": "maxSponsoredWei",
+              "type": "uint128"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint64",
+              "name": "ttlSeconds",
+              "type": "uint64"
+            }
+          ],
+          "name": "DefaultSessionPolicyUpdated",
           "type": "event"
         },
         {
@@ -3758,6 +3808,27 @@
           "type": "error"
         },
         {
+          "inputs": [],
+          "name": "FailedCall",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "balance",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "needed",
+              "type": "uint256"
+            }
+          ],
+          "name": "InsufficientBalance",
+          "type": "error"
+        },
+        {
           "inputs": [
             {
               "internalType": "address",
@@ -4857,7 +4928,7 @@
             },
             {
               "internalType": "address",
-              "name": "owner",
+              "name": "structureOwner",
               "type": "address"
             },
             {
@@ -5996,6 +6067,25 @@
           "name": "acceptOwnership",
           "outputs": [],
           "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "agentNames",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "view",
           "type": "function"
         },
         {
@@ -8091,7 +8181,7 @@
             },
             {
               "internalType": "address",
-              "name": "owner",
+              "name": "tileOwner",
               "type": "address"
             },
             {

@@ -2,6 +2,10 @@
 pragma solidity ^0.8.28;
 
 import "./ActorAware.sol";
+import "./ILobbyManagerPrize.sol";
+import "./ILobbyManagerSync.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 
 interface IAgentStatsRegistry {
     function recordLobbyResult(uint256 lobbyId, address[] calldata players, address winner) external;
@@ -11,7 +15,7 @@ interface IRegisteredAgentLookup {
     function getAgentByController(address controller) external view returns (address);
 }
 
-contract LobbyManager is ActorAware {
+contract LobbyManager is ActorAware, ReentrancyGuard, ILobbySessionSponsorPool, ILobbyManagerPrize, ILobbyManagerSync {
     uint256 public constant TICKET_PRICE = 1 ether;
     uint256 public constant MIN_PLAYERS = 1;
     uint256 public constant MAX_PLAYERS = 8;
@@ -61,6 +65,7 @@ contract LobbyManager is ActorAware {
     event EntryPointUpdated(address indexed previousEntryPoint, address indexed newEntryPoint);
     event SessionSponsorPoolConsumed(uint256 indexed lobbyId, uint256 amount, address indexed receiver);
     event SessionSponsorRefunded(uint256 indexed lobbyId, uint256 weiTotal);
+    event DefaultSessionPolicyUpdated(uint128 maxSponsoredWei, uint64 ttlSeconds);
     event SessionPolicyProvisioned(
         uint256 indexed lobbyId,
         address indexed actor,
@@ -81,16 +86,19 @@ contract LobbyManager is ActorAware {
     }
 
     function setAgentStatsRegistry(address newRegistry) external onlyOwner {
+        require(newRegistry != address(0), "Registry address required");
         emit AgentStatsRegistryUpdated(agentStatsRegistry, newRegistry);
         agentStatsRegistry = newRegistry;
     }
 
     function setSessionPolicyRegistry(address newRegistry) external onlyOwner {
+        require(newRegistry != address(0), "Registry address required");
         emit SessionPolicyRegistryUpdated(sessionPolicyRegistry, newRegistry);
         sessionPolicyRegistry = newRegistry;
     }
 
     function setEntryPoint(address newEntryPoint) external onlyOwner {
+        require(newEntryPoint != address(0), "EntryPoint address required");
         emit EntryPointUpdated(entryPoint, newEntryPoint);
         entryPoint = newEntryPoint;
     }
@@ -99,16 +107,19 @@ contract LobbyManager is ActorAware {
         require(ttlSeconds > 0, "Session ttl must be > 0");
         defaultSessionMaxSponsoredWei = maxSponsoredWei;
         defaultSessionTtlSeconds = ttlSeconds;
+        emit DefaultSessionPolicyUpdated(maxSponsoredWei, ttlSeconds);
     }
 
     function setSessionSponsorManager(address newManager) external onlyOwner {
+        require(newManager != address(0), "Manager address required");
         emit SessionSponsorManagerUpdated(sessionSponsorManager, newManager);
         sessionSponsorManager = newManager;
     }
 
     /// @notice Pulls up to `amount` wei from the lobby sponsor pool (never reverts for "too little" — used after UserOp `execute` when `postOp` still needs reimbursement).
-    function consumeSessionSponsorPool(uint256 _lobbyId, uint256 amount, address payable receiver) external {
+    function consumeSessionSponsorPool(uint256 _lobbyId, uint256 amount, address payable receiver) external nonReentrant {
         require(msg.sender == sessionSponsorManager, "Only session sponsor manager");
+        require(receiver != address(0), "Receiver address required");
         if (amount == 0) {
             return;
         }
@@ -118,10 +129,8 @@ contract LobbyManager is ActorAware {
         }
         uint256 take = amount <= bal ? amount : bal;
         sessionSponsorPool[_lobbyId] = bal - take;
-        (bool success, ) = receiver.call{value: take}("");
-        require(success, "Session sponsor transfer failed");
-
         emit SessionSponsorPoolConsumed(_lobbyId, take, receiver);
+        Address.sendValue(receiver, take);
     }
 
     /// @notice Full ticket is credited to `sessionSponsorPool` so cancel/leave/refunds return everything still on this contract (gas is only tx fees). AA / paymaster pulls from this pool; no ticket ETH is sent to EntryPoint here.
@@ -163,7 +172,7 @@ contract LobbyManager is ActorAware {
         address sessionKey,
         uint128 maxSponsoredWei,
         uint64 ttlSeconds
-    ) external payable returns (uint256) {
+    ) external payable nonReentrant returns (uint256) {
         require(msg.value == TICKET_PRICE, "Must send exact ticket price");
         address player = _actor();
 
@@ -215,7 +224,7 @@ contract LobbyManager is ActorAware {
         address sessionKey,
         uint128 maxSponsoredWei,
         uint64 ttlSeconds
-    ) external payable {
+    ) external payable nonReentrant {
         require(msg.value == TICKET_PRICE, "Must send exact ticket price");
         address player = _actor();
 
@@ -308,7 +317,7 @@ contract LobbyManager is ActorAware {
     }
 
     /// @notice Called by GameCore when a match ends. Does not move `sessionSponsorPool` here — ERC-4337 `postOp` still needs the pool for gas reimbursement in the same UserOp. Call `distributeSessionSponsorRemainder` afterward (e.g. next tx).
-    function notifyGameSettled(uint256 _lobbyId, address winner) external {
+    function notifyGameSettled(uint256 _lobbyId, address winner) external nonReentrant {
         require(msg.sender == gameCore, "Only GameCore");
         Lobby storage lobby = lobbies[_lobbyId];
         require(lobby.status == LobbyStatus.ACTIVE, "Game not active");
@@ -328,7 +337,7 @@ contract LobbyManager is ActorAware {
     }
 
     /// @notice Host declares a winner after off-chain resolution. Sponsor pool is split via `distributeSessionSponsorRemainder` (not here), so sponsored `completeGame` can finish `postOp`.
-    function completeGame(uint256 _lobbyId, address _winner) external {
+    function completeGame(uint256 _lobbyId, address _winner) external nonReentrant {
         Lobby storage lobby = lobbies[_lobbyId];
         address player = _actor();
         require(player == lobby.host, "Only host can complete game");
@@ -446,14 +455,14 @@ contract LobbyManager is ActorAware {
     }
 
     // Zwycięzca/gracz wypłaca swoje saldo
-    function withdraw() external {
+    function withdraw() external nonReentrant {
         address player = _actor();
+        require(player != address(0), "Invalid player");
         uint256 amount = playerBalance[player];
         require(amount > 0, "No balance to withdraw");
 
         playerBalance[player] = 0;
-        (bool success, ) = payable(player).call{value: amount}("");
-        require(success, "Withdraw failed");
+        Address.sendValue(payable(player), amount);
     }
 
     // ===== VIEW FUNCTIONS =====
