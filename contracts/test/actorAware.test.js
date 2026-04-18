@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { TICKET_PRICE } = require("./gameplay.config.js");
 
 describe("ActorAware authorities", function () {
   async function deployHarness() {
@@ -81,8 +82,7 @@ describe("ActorAware authorities", function () {
     const lobbyManager = await LobbyManager.deploy();
     await lobbyManager.waitForDeployment();
 
-    await lobbyManager.connect(alice).createLobby("Sponsored", { value: ethers.parseEther("5") });
-    await lobbyManager.connect(alice).reserveSessionSponsorPool(1, ethers.parseEther("0.01"));
+    await lobbyManager.connect(alice).createLobby("Sponsored", { value: TICKET_PRICE });
 
     await sessionForwarder.setSponsorPool(await lobbyManager.getAddress());
     await lobbyManager.setSessionSponsorManager(await sessionForwarder.getAddress());
@@ -97,7 +97,7 @@ describe("ActorAware authorities", function () {
 
     expect(afterBalance - beforeBalance).to.equal(ethers.parseEther("0.003"));
     expect(await sessionForwarder.sessionSponsoredWei(sessionKey.address)).to.equal(ethers.parseEther("0.003"));
-    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(ethers.parseEther("0.007"));
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(TICKET_PRICE - ethers.parseEther("0.003"));
     await expect(
       sessionForwarder.sponsorSessionAction(sessionKey.address, ethers.parseEther("0.002"), bob.address)
     ).to.be.revertedWith("Session sponsor limit exceeded");

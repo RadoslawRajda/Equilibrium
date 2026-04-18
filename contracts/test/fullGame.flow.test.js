@@ -45,31 +45,32 @@ async function mineSeconds(seconds) {
 
 const ZERO_RES = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
 
+/** Matches `GameConfig.gameMasterMaxGrantPerResource` — GM cannot grant more than this per stat in one call. */
+const GM_GRANT_CAP = 24n;
+
 /**
- * With `basicResourceMax` = 20 and `craftAlloyCost` = 5 per basic, five crafts need a refill:
- * 4 crafts from full basics, then +5 each, then the 5th craft.
+ * Reach victory goods on-chain: before each craft, top up basics + energy up to the GM grant cap so tests survive
+ * higher `craftAlloyCost` / `craftAlloyEnergyCost` or a larger `victoryGoodsThreshold` without hand-tuned numbers.
  */
 async function craftAlloyUntilVictory(gameCore, host, lobbyId) {
   await gameCore.connect(host).setLobbyGameMaster(lobbyId, host.address);
-  await gameCore.connect(host).gameMasterAdjustResources(
-    lobbyId,
-    host.address,
-    { food: 18n, wood: 18n, stone: 18n, ore: 18n, energy: 0n },
-    ZERO_RES,
-    "test seed basics to cap"
-  );
   const threshold = Number(await gameCore.getVictoryGoodsThreshold());
-  for (let i = 0; i < threshold - 1; i += 1) {
+  for (let i = 0; i < threshold; i += 1) {
+    await gameCore.connect(host).gameMasterAdjustResources(
+      lobbyId,
+      host.address,
+      {
+        food: GM_GRANT_CAP,
+        wood: GM_GRANT_CAP,
+        stone: GM_GRANT_CAP,
+        ore: GM_GRANT_CAP,
+        energy: GM_GRANT_CAP
+      },
+      ZERO_RES,
+      `test GM top-up before craft ${i + 1}/${threshold}`
+    );
     await gameCore.connect(host).craftAlloy(lobbyId);
   }
-  await gameCore.connect(host).gameMasterAdjustResources(
-    lobbyId,
-    host.address,
-    { food: 5n, wood: 5n, stone: 5n, ore: 5n, energy: 0n },
-    ZERO_RES,
-    "test seed fifth craft"
-  );
-  await gameCore.connect(host).craftAlloy(lobbyId);
 }
 
 async function setupRunningLobby({ playerCount = 0, seed = DEFAULT_MAP_SEED, radius = DEFAULT_MAP_RADIUS } = {}) {
@@ -161,18 +162,24 @@ describe("Full game flow — status, victory, cancel, payout", function () {
     expect(goods).to.equal(threshold);
   });
 
-  it("credits prize pool to playerBalance automatically when GameCore reports a winner", async function () {
+  it("credits sponsor remainder to playerBalance when GameCore reports a winner", async function () {
     const { gameCore, host, lobbyManager, tiles } = await setupRunningLobby({ playerCount: 0 });
     const t = tiles[0];
     await gameCore.connect(host).pickStartingHex(1, t.hexId, t.q, t.r);
 
-    const poolBefore = (await lobbyManager.getLobby(1))[4];
+    const sponsorBefore = await lobbyManager.sessionSponsorPool(1);
 
     await craftAlloyUntilVictory(gameCore, host, 1n);
 
     const lmAfter = await lobbyManager.getLobby(1);
     expect(lmAfter[3]).to.equal(LM.COMPLETED);
-    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(poolBefore);
+    expect(sponsorBefore).to.equal(TICKET_PRICE);
+    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(0n);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(sponsorBefore);
+
+    await lobbyManager.distributeSessionSponsorRemainder(1);
+    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(sponsorBefore);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(0n);
 
     await expect(lobbyManager.connect(host).completeGame(1, host.address)).to.be.revertedWith("Game not active");
   });
@@ -185,13 +192,17 @@ describe("Full game flow — status, victory, cancel, payout", function () {
     await lobbyManager.connect(player1).buyTicket(1, { value: TICKET_PRICE });
     await gameCore.connect(player1).joinLobby(1);
 
-    const poolBefore = (await lobbyManager.getLobby(1))[4];
-    expect(poolBefore).to.equal(TICKET_PRICE * 2n);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(TICKET_PRICE * 2n);
 
     await expect(lobbyManager.connect(host).cancelLobby(1)).to.emit(lobbyManager, "LobbyCancelled").withArgs(1n);
 
     const lm = await lobbyManager.getLobby(1);
     expect(lm[3]).to.equal(LM.CANCELLED);
+    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(0n);
+    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(0n);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(TICKET_PRICE * 2n);
+
+    await lobbyManager.distributeSessionSponsorRemainder(1);
     expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(TICKET_PRICE);
     expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(TICKET_PRICE);
 
@@ -213,7 +224,7 @@ describe("Full game flow — status, victory, cancel, payout", function () {
     await gameCore.connect(host).pickStartingHex(1, a.hexId, a.q, a.r);
     await gameCore.connect(player1).pickStartingHex(1, b.hexId, b.q, b.r);
 
-    const pool = (await lobbyManager.getLobby(1))[4];
+    const sponsorPool = await lobbyManager.sessionSponsorPool(1);
 
     await expect(gameCore.connect(host).concede(1))
       .to.emit(gameCore, "PlayerConceded")
@@ -221,18 +232,22 @@ describe("Full game flow — status, victory, cancel, payout", function () {
       .and.to.emit(gameCore, "Victory")
       .withArgs(1n, player1.address)
       .and.to.emit(lobbyManager, "GameCompleted")
-      .withArgs(1n, player1.address, pool);
+      .withArgs(1n, player1.address, 0n);
 
     const r = await gameCore.getLobbyRound(1);
     expect(r[3]).to.equal(GC.Ended);
     expect(await gameCore.isPlayerAlive(1, host.address)).to.equal(false);
     expect(await gameCore.isPlayerAlive(1, player1.address)).to.equal(true);
     expect((await lobbyManager.getLobby(1))[3]).to.equal(2n);
-    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(pool);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(sponsorPool);
+    await lobbyManager.distributeSessionSponsorRemainder(1);
+    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(TICKET_PRICE);
+    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(TICKET_PRICE);
+    expect(sponsorPool).to.equal(TICKET_PRICE * 2n);
   });
 
   it("abandons a solo match when the only player concedes", async function () {
-    const { gameCore, host, tiles } = await setupRunningLobby({ playerCount: 0 });
+    const { gameCore, host, lobbyManager, tiles } = await setupRunningLobby({ playerCount: 0 });
     const t = tiles[0];
     await gameCore.connect(host).pickStartingHex(1, t.hexId, t.q, t.r);
 
@@ -244,6 +259,10 @@ describe("Full game flow — status, victory, cancel, payout", function () {
 
     const r = await gameCore.getLobbyRound(1);
     expect(r[3]).to.equal(GC.Ended);
+    expect((await lobbyManager.getLobby(1))[3]).to.equal(LM.COMPLETED);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(TICKET_PRICE);
+    await lobbyManager.distributeSessionSponsorRemainder(1);
+    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(TICKET_PRICE);
   });
 
   it("resolves unanimous __END_GAME__ vote during Running and sets status to Ended", async function () {

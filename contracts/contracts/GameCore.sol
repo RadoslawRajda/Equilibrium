@@ -146,8 +146,8 @@ contract GameCore is ActorAware {
         lobbyManager = _lobbyManager;
     }
 
-    function _notifyLobbyPrize(uint256 lobbyId, address winner) internal {
-        ILobbyManagerPrize(lobbyManager).notifyGameWinner(lobbyId, winner);
+    function _notifyLobbySettled(uint256 lobbyId, address winner) internal {
+        ILobbyManagerPrize(lobbyManager).notifyGameSettled(lobbyId, winner);
     }
 
     function _abs(int256 value) internal pure returns (uint256) {
@@ -308,23 +308,17 @@ contract GameCore is ActorAware {
         player.resources.energy -= energyCost;
     }
 
-    function getBuildCost() external pure returns (Resources memory) {
-        (Resources memory cost) = Resources(0, 0, 0, 0, 0);
+    function getBuildCost() external pure returns (Resources memory cost) {
         (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.buildCost();
-        return cost;
     }
 
-    function getUpgradeCost() external pure returns (Resources memory) {
-        (Resources memory cost) = Resources(0, 0, 0, 0, 0);
+    function getUpgradeCost() external pure returns (Resources memory cost) {
         (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.upgradeCost();
-        return cost;
     }
 
-    function previewDiscoverCost(uint256 lobbyId, address playerAddress) external view returns (Resources memory) {
+    function previewDiscoverCost(uint256 lobbyId, address playerAddress) external view returns (Resources memory cost) {
         Lobby storage lobby = lobbies[lobbyId];
-        (Resources memory cost) = Resources(0, 0, 0, 0, 0);
         (cost.food, cost.wood, cost.stone, cost.ore, cost.energy) = GameConfig.discoverCost(lobby.playerState[playerAddress].ownedHexCount);
-        return cost;
     }
 
     function previewCollectionEnergyCost(uint8 structureLevel) external pure returns (uint256) {
@@ -493,10 +487,11 @@ contract GameCore is ActorAware {
         if (aliveCount == 1) {
             lobby.status = Status.Ended;
             emit Victory(lobbyId, lastAlive);
-            _notifyLobbyPrize(lobbyId, lastAlive);
+            _notifyLobbySettled(lobbyId, lastAlive);
         } else if (aliveCount == 0) {
             lobby.status = Status.Ended;
             emit GameAbandoned(lobbyId);
+            _notifyLobbySettled(lobbyId, address(0));
         }
     }
 
@@ -986,7 +981,7 @@ contract GameCore is ActorAware {
             address w = _actor();
             lobby.status = Status.Ended;
             emit Victory(lobbyId, w);
-            _notifyLobbyPrize(lobbyId, w);
+            _notifyLobbySettled(lobbyId, w);
         }
     }
 

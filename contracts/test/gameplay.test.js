@@ -8,6 +8,7 @@ const {
   ROUND_SECONDS
 } = require("./gameplay.config.js");
 const { getLinkedGameCoreFactory } = require("./helpers/deployGameCoreFactory.js");
+const { asResourceTuple } = require("./helpers/resourceTuple.js");
 const BIOMES = ["Plains", "Forest", "Mountains", "Desert"];
 const RESOURCE_BY_BIOME = {
   Plains: "food",
@@ -111,7 +112,7 @@ const START_ENERGY = 100n;
 const GM_GRANT_CAP = 24n;
 
 async function gmReplaceResources(gameCore, gmSigner, lobbyId, playerAddress, target) {
-  const cur = await gameCore.getPlayerResources(lobbyId, playerAddress);
+  const cur = asResourceTuple(await gameCore.getPlayerResources(lobbyId, playerAddress));
   const takeAll = { food: cur[0], wood: cur[1], stone: cur[2], ore: cur[3], energy: cur[4] };
   const z = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
   await gameCore.connect(gmSigner).gameMasterAdjustResources(lobbyId, playerAddress, z, takeAll, "wipe");
@@ -185,16 +186,18 @@ describe("LobbyManager lifecycle", function () {
     expect(lobbyAfterCreate[0]).to.equal(host.address);
     expect(lobbyAfterCreate[1]).to.equal("Alpha");
     expect(lobbyAfterCreate[3]).to.equal(0n);
-    expect(lobbyAfterCreate[4]).to.equal(TICKET_PRICE);
+    expect(lobbyAfterCreate[4]).to.equal(0n);
     expect(lobbyAfterCreate[5]).to.equal(1n);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(TICKET_PRICE);
 
     await expect(lobbyManager.connect(player1).buyTicket(1, { value: TICKET_PRICE }))
       .to.emit(lobbyManager, "TicketBought")
       .withArgs(1n, player1.address);
 
     const lobbyAfterSecondTicket = await lobbyManager.getLobby(1);
-    expect(lobbyAfterSecondTicket[4]).to.equal(TICKET_PRICE * 2n);
+    expect(lobbyAfterSecondTicket[4]).to.equal(0n);
     expect(lobbyAfterSecondTicket[5]).to.equal(2n);
+    expect(await lobbyManager.sessionSponsorPool(1)).to.equal(TICKET_PRICE * 2n);
     expect(await lobbyManager.hasTicket(1, player1.address)).to.equal(true);
 
     await expect(lobbyManager.connect(host).startGame(1))
@@ -206,12 +209,16 @@ describe("LobbyManager lifecycle", function () {
 
     await expect(lobbyManager.connect(host).completeGame(1, player1.address))
       .to.emit(lobbyManager, "GameCompleted")
-      .withArgs(1n, player1.address, TICKET_PRICE * 2n);
+      .withArgs(1n, player1.address, 0n);
 
-    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(TICKET_PRICE * 2n);
+    await lobbyManager.distributeSessionSponsorRemainder(1);
+    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(TICKET_PRICE);
+    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(TICKET_PRICE);
 
+    await lobbyManager.connect(host).withdraw();
     await lobbyManager.connect(player1).withdraw();
 
+    expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(0n);
     expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(0n);
     expect(await ethers.provider.getBalance(lobbyManager.target)).to.equal(0n);
   });
@@ -226,6 +233,7 @@ describe("LobbyManager lifecycle", function () {
       .to.emit(lobbyManager, "LobbyCancelled")
       .withArgs(1n);
 
+    await lobbyManager.distributeSessionSponsorRemainder(1);
     expect(await lobbyManager.getPlayerBalance(host.address)).to.equal(TICKET_PRICE);
     expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(TICKET_PRICE);
     const canceledLobby = await lobbyManager.getLobby(1);
@@ -238,14 +246,14 @@ describe("LobbyManager lifecycle", function () {
     await lobbyManager.connect(host).createLobby("Leave me", { value: TICKET_PRICE });
     await lobbyManager.connect(player1).buyTicket(1, { value: TICKET_PRICE });
 
-    const poolBefore = (await lobbyManager.getLobby(1))[4];
-    expect(poolBefore).to.equal(TICKET_PRICE * 2n);
+    const sponsorBefore = await lobbyManager.sessionSponsorPool(1);
+    expect(sponsorBefore).to.equal(TICKET_PRICE * 2n);
 
     await expect(lobbyManager.connect(player1).leaveOpenLobby(1))
       .to.emit(lobbyManager, "PlayerLeftOpenLobby")
-      .withArgs(1n, player1.address, poolBefore / 2n);
+      .withArgs(1n, player1.address, sponsorBefore / 2n);
 
-    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(poolBefore / 2n);
+    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(sponsorBefore / 2n);
     const after = await lobbyManager.getLobby(1);
     expect(after[5]).to.equal(1n); // playerCount — only host remains
     expect(await lobbyManager.hasTicket(1, player1.address)).to.equal(false);
@@ -258,14 +266,14 @@ describe("LobbyManager lifecycle", function () {
     await lobbyManager.connect(host).createLobby("Kick me", { value: TICKET_PRICE });
     await lobbyManager.connect(player1).buyTicket(1, { value: TICKET_PRICE });
 
-    const poolBefore = (await lobbyManager.getLobby(1))[4];
-    expect(poolBefore).to.equal(TICKET_PRICE * 2n);
+    const sponsorBeforeKick = await lobbyManager.sessionSponsorPool(1);
+    expect(sponsorBeforeKick).to.equal(TICKET_PRICE * 2n);
 
     await expect(lobbyManager.connect(host).hostKickOpenLobbyPlayer(1, player1.address))
       .to.emit(lobbyManager, "PlayerKickedOpenLobby")
-      .withArgs(1n, player1.address, poolBefore / 2n);
+      .withArgs(1n, player1.address, sponsorBeforeKick / 2n);
 
-    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(poolBefore / 2n);
+    expect(await lobbyManager.getPlayerBalance(player1.address)).to.equal(sponsorBeforeKick / 2n);
     const after = await lobbyManager.getLobby(1);
     expect(after[5]).to.equal(1n);
     expect(await lobbyManager.hasTicket(1, player1.address)).to.equal(false);
@@ -334,11 +342,11 @@ describe("GameCore gameplay", function () {
     expect(roundAfterPick[0]).to.equal(1n);
     expect(roundAfterPick[3]).to.equal(2n);
 
-    const beforeBuildResources = await gameCore.getPlayerResources(1, host.address);
+    const beforeBuildResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     await expect(gameCore.connect(host).buildStructure(1, tile.hexId))
       .to.emit(gameCore, "StructureBuilt")
       .withArgs(1n, host.address, tile.hexId, 1n);
-    const afterBuildResources = await gameCore.getPlayerResources(1, host.address);
+    const afterBuildResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(afterBuildResources[0]).to.equal(beforeBuildResources[0] - 1n);
     expect(afterBuildResources[1]).to.equal(beforeBuildResources[1] - 1n);
     expect(afterBuildResources[2]).to.equal(beforeBuildResources[2] - 1n);
@@ -353,13 +361,13 @@ describe("GameCore gameplay", function () {
     await expect(gameCore.connect(host).advanceRound(1, 300))
       .to.emit(gameCore, "RoundAdvanced");
 
-    const beforeResources = await gameCore.getPlayerResources(1, host.address);
+    const beforeResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     const yieldAmt = 1n;
     await expect(gameCore.connect(host).collect(1, tile.hexId))
       .to.emit(gameCore, "ResourcesCollected")
       .withArgs(1n, host.address, tile.hexId, resourceKey, yieldAmt);
 
-    const afterResources = await gameCore.getPlayerResources(1, host.address);
+    const afterResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(afterResources[resourceIndex]).to.equal(beforeResources[resourceIndex] + yieldAmt);
     expect(afterResources[4]).to.equal(beforeResources[4] - 10n);
 
@@ -373,11 +381,11 @@ describe("GameCore gameplay", function () {
       energy: 100n
     });
 
-    const beforeUpgradeResources = await gameCore.getPlayerResources(1, host.address);
+    const beforeUpgradeResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     await expect(gameCore.connect(host).upgradeStructure(1, tile.hexId))
       .to.emit(gameCore, "StructureUpgraded")
       .withArgs(1n, host.address, tile.hexId, 2n);
-    const afterUpgradeResources = await gameCore.getPlayerResources(1, host.address);
+    const afterUpgradeResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(afterUpgradeResources[0]).to.equal(beforeUpgradeResources[0] - 2n);
     expect(afterUpgradeResources[2]).to.equal(beforeUpgradeResources[2] - 3n);
     expect(afterUpgradeResources[4]).to.equal(beforeUpgradeResources[4] - 25n);
@@ -401,12 +409,12 @@ describe("GameCore gameplay", function () {
       await expect(gameCore.connect(host).discoverHex(1, farTile.hexId, farTile.q, farTile.r)).to.be.revertedWith("Must be adjacent");
     }
 
-    const beforeResources = await gameCore.getPlayerResources(1, host.address);
+    const beforeResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     await expect(gameCore.connect(host).discoverHex(1, target.hexId, target.q, target.r))
       .to.emit(gameCore, "HexDiscovered")
       .withArgs(1n, host.address, target.hexId);
 
-    const afterResources = await gameCore.getPlayerResources(1, host.address);
+    const afterResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(afterResources[0]).to.equal(beforeResources[0] - 0n);
     expect(afterResources[1]).to.equal(beforeResources[1] - 1n);
     expect(afterResources[2]).to.equal(beforeResources[2] - 0n);
@@ -445,7 +453,7 @@ describe("GameCore gameplay", function () {
 
     await gameCore.connect(host).pickStartingHex(1, start.hexId, start.q, start.r);
 
-    const initialCost = await gameCore.previewDiscoverCost(1, host.address);
+    const initialCost = asResourceTuple(await gameCore.previewDiscoverCost(1, host.address));
     expect(initialCost[0]).to.equal(0n);
     expect(initialCost[1]).to.equal(1n);
     expect(initialCost[2]).to.equal(0n);
@@ -453,7 +461,7 @@ describe("GameCore gameplay", function () {
 
     await gameCore.connect(host).discoverHex(1, target.hexId, target.q, target.r);
 
-    const afterFirstDiscoverCost = await gameCore.previewDiscoverCost(1, host.address);
+    const afterFirstDiscoverCost = asResourceTuple(await gameCore.previewDiscoverCost(1, host.address));
     expect(afterFirstDiscoverCost[0]).to.equal(0n);
     expect(afterFirstDiscoverCost[1]).to.equal(1n);
     expect(afterFirstDiscoverCost[2]).to.equal(0n);
@@ -463,14 +471,14 @@ describe("GameCore gameplay", function () {
   it("exposes build and upgrade costs from the contract", async function () {
     const { gameCore } = await deploySystem();
 
-    const buildCost = await gameCore.getBuildCost();
+    const buildCost = asResourceTuple(await gameCore.getBuildCost());
     expect(buildCost[0]).to.equal(1n);
     expect(buildCost[1]).to.equal(1n);
     expect(buildCost[2]).to.equal(1n);
     expect(buildCost[3]).to.equal(0n);
     expect(buildCost[4]).to.equal(0n);
 
-    const upgradeCost = await gameCore.getUpgradeCost();
+    const upgradeCost = asResourceTuple(await gameCore.getUpgradeCost());
     expect(upgradeCost[0]).to.equal(2n);
     expect(upgradeCost[1]).to.equal(0n);
     expect(upgradeCost[2]).to.equal(3n);
@@ -486,14 +494,14 @@ describe("GameCore gameplay", function () {
   it("assigns the configured starting resources to new players", async function () {
     const { gameCore, host, player1 } = await setupLobby({ playerCount: 1 });
 
-    const hostResources = await gameCore.getPlayerResources(1, host.address);
+    const hostResources = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(hostResources[0]).to.equal(START_FOOD);
     expect(hostResources[1]).to.equal(START_WOOD);
     expect(hostResources[2]).to.equal(START_STONE);
     expect(hostResources[3]).to.equal(START_ORE);
     expect(hostResources[4]).to.equal(START_ENERGY);
 
-    const playerResources = await gameCore.getPlayerResources(1, player1.address);
+    const playerResources = asResourceTuple(await gameCore.getPlayerResources(1, player1.address));
     expect(playerResources[0]).to.equal(START_FOOD);
     expect(playerResources[1]).to.equal(START_WOOD);
     expect(playerResources[2]).to.equal(START_STONE);
@@ -512,13 +520,13 @@ describe("GameCore gameplay", function () {
     expect(await gameCore.getTradingEnergyCost()).to.equal(0n);
 
     await gameCore.connect(host).pickStartingHex(1, start.hexId, start.q, start.r);
-    const afterStart = await gameCore.getPlayerResources(1, host.address);
+    const afterStart = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(afterStart[4]).to.equal(START_ENERGY);
 
     await mineSeconds(ROUND_SECONDS + 5);
     await gameCore.connect(host).discoverHex(1, target.hexId, target.q, target.r);
 
-    const afterTimeoutAction = await gameCore.getPlayerResources(1, host.address);
+    const afterTimeoutAction = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(afterTimeoutAction[4]).to.equal(START_ENERGY);
   });
 
@@ -651,8 +659,8 @@ describe("GameCore gameplay", function () {
     const tradeAfter = await gameCore.getTrade(1, 0);
     expect(tradeAfter[2]).to.equal(true);
 
-    const hostAfter = await gameCore.getPlayerResources(1, host.address);
-    const p1After = await gameCore.getPlayerResources(1, player1.address);
+    const hostAfter = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
+    const p1After = asResourceTuple(await gameCore.getPlayerResources(1, player1.address));
     expect(hostAfter[0]).to.equal(1n);
     expect(hostAfter[1]).to.equal(3n);
     expect(p1After[0]).to.equal(3n);
@@ -674,9 +682,9 @@ describe("GameCore gameplay", function () {
       energy: 100n
     });
 
-    const before = await gameCore.getPlayerResources(1, host.address);
+    const before = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     await expect(gameCore.connect(host).tradeWithBank(1, 0, 1)).to.emit(gameCore, "BankTrade");
-    const after = await gameCore.getPlayerResources(1, host.address);
+    const after = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(after[0]).to.equal(before[0] - 4n);
     /** Wood was already at `basicResourceMax`; extra from bank is clamped on-chain. */
     expect(after[1]).to.equal(20n);
@@ -698,9 +706,9 @@ describe("GameCore gameplay", function () {
     });
 
     const lots = 3n;
-    const before = await gameCore.getPlayerResources(1, host.address);
+    const before = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     await expect(gameCore.connect(host).tradeWithBankBulk(1, 0, 1, lots)).to.emit(gameCore, "BankTrade");
-    const after = await gameCore.getPlayerResources(1, host.address);
+    const after = asResourceTuple(await gameCore.getPlayerResources(1, host.address));
     expect(after[0]).to.equal(before[0] - 4n * lots);
     expect(after[1]).to.equal(20n);
   });
@@ -749,7 +757,7 @@ describe("GameCore gameplay", function () {
     const take = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
     await gameCore.connect(gm).gameMasterAdjustResources(1, player1.address, grant, take, "subsidy");
 
-    const res = await gameCore.getPlayerResources(1, player1.address);
+    const res = asResourceTuple(await gameCore.getPlayerResources(1, player1.address));
     expect(res[0]).to.equal(START_FOOD + 5n);
   });
 

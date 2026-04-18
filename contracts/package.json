@@ -7,7 +7,8 @@
     "deploy": "hardhat run scripts/deploy.js --network ganache",
     "deploy:localhost": "hardhat run scripts/deploy.js --network localhost",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost && node ../frontend/scripts/sync-abi.mjs",
-    "test": "hardhat test",
+    "test": "hardhat compile --force && hardhat test",
+    "test:quick": "hardhat test",
     "test:coverage": "hardhat coverage"
   },
   "devDependencies": {

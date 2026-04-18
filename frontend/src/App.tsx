@@ -91,7 +91,7 @@ type ContractMeta = {
 const resourceKeys: ResourceKey[] = ["food", "wood", "stone", "ore", "energy"];
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Fallback if TICKET_PRICE cannot be read from chain (must match LobbyManager.TICKET_PRICE) */
-const FALLBACK_TICKET_PRICE_WEI = parseEther("5");
+const FALLBACK_TICKET_PRICE_WEI = parseEther("1");
 /** Matches GameConfig.craftAlloyCost — used if previewCraftAlloyCost read fails */
 const FALLBACK_CRAFT_ALLOY_COST = { food: 3, wood: 3, stone: 3, ore: 3, energy: 0 };
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -170,6 +170,28 @@ function parseListAgentsRows(raw: unknown): { agent: string; controller: string;
   return out;
 }
 
+/** LobbyManager.COMPLETED / CANCELLED — matches `_splitSessionSponsorToPlayerBalances` per-player wei. */
+const LM_STATUS_COMPLETED = 2;
+const LM_STATUS_CANCELLED = 3;
+
+function pendingSponsorShareForRosterWei(args: {
+  lobbyStatus: number;
+  sessionPoolWei: bigint;
+  roster: readonly string[];
+  viewer: string;
+}): bigint {
+  const { lobbyStatus, sessionPoolWei, roster, viewer } = args;
+  if (lobbyStatus !== LM_STATUS_COMPLETED && lobbyStatus !== LM_STATUS_CANCELLED) return 0n;
+  if (sessionPoolWei === 0n || roster.length === 0) return 0n;
+  const v = viewer.toLowerCase();
+  const idx = roster.findIndex((p) => p.toLowerCase() === v);
+  if (idx < 0) return 0n;
+  const n = BigInt(roster.length);
+  const per = sessionPoolWei / n;
+  const rem = sessionPoolWei % n;
+  return per + (BigInt(idx) < rem ? 1n : 0n);
+}
+
 function AppPage() {
   const navigate = useNavigate();
   const { lobbyId } = useParams<{ lobbyId: string }>();
@@ -218,7 +240,11 @@ function AppPage() {
     runningRoundSeconds: number;
   } | null>(null);
   const [ticketPriceWei, setTicketPriceWei] = useState<bigint | null>(null);
-  /** LobbyManager.playerBalance(address) — call withdraw() to receive ETH. */
+  /**
+   * Estimated ETH this wallet can pull via LobbyManager after a claim on the **current** `/game/:lobbyId` route:
+   * `playerBalance(address)` plus, when the lobby is COMPLETED/CANCELLED, this wallet's share of any unsplit
+   * `sessionSponsorPool` (same math as on-chain split — enables the Claim button before `distribute` runs).
+   */
   const [lmWithdrawableWei, setLmWithdrawableWei] = useState<bigint | null>(null);
   const [registryAgents, setRegistryAgents] = useState<
     { address: string; name: string; identity?: string }[]
@@ -897,13 +923,51 @@ function AppPage() {
     let cancelled = false;
     const refresh = async () => {
       try {
-        const wei = (await publicClient.readContract({
+        const base = (await publicClient.readContract({
           address: lobbyManagerAddress,
           abi: lobbyManagerAbi,
           functionName: "getPlayerBalance",
           args: [address]
         } as any)) as bigint;
-        if (!cancelled) setLmWithdrawableWei(wei);
+
+        let pendingFromLobby = 0n;
+        if (lobbyId) {
+          const lid = BigInt(lobbyId);
+          const [lobbyRow, poolRaw, playersRaw] = await Promise.all([
+            publicClient.readContract({
+              address: lobbyManagerAddress,
+              abi: lobbyManagerAbi,
+              functionName: "getLobby",
+              args: [lid]
+            } as any),
+            publicClient.readContract({
+              address: lobbyManagerAddress,
+              abi: lobbyManagerAbi,
+              functionName: "sessionSponsorPool",
+              args: [lid]
+            } as any),
+            publicClient.readContract({
+              address: lobbyManagerAddress,
+              abi: lobbyManagerAbi,
+              functionName: "getLobbyPlayers",
+              args: [lid]
+            } as any)
+          ]);
+          const lr = lobbyRow as readonly unknown[] | Record<string, unknown>;
+          const lmStatus = Array.isArray(lr)
+            ? Number(lr[3] as bigint)
+            : Number((lr as Record<string, unknown>).status ?? 0);
+          const poolWei = poolRaw as bigint;
+          const roster = Array.isArray(playersRaw) ? (playersRaw as string[]) : [];
+          pendingFromLobby = pendingSponsorShareForRosterWei({
+            lobbyStatus: lmStatus,
+            sessionPoolWei: poolWei,
+            roster,
+            viewer: address
+          });
+        }
+
+        if (!cancelled) setLmWithdrawableWei(base + pendingFromLobby);
       } catch {
         if (!cancelled) setLmWithdrawableWei(null);
       }
@@ -915,7 +979,7 @@ function AppPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [address, lobbyManagerAbi, lobbyManagerAddress, publicClient]);
+  }, [address, lobbyId, lobbyManagerAbi, lobbyManagerAddress, publicClient]);
 
   useEffect(() => {
     if (!activeLobby || !address) return;
@@ -1314,6 +1378,49 @@ function AppPage() {
       if (!publicClient) {
         throw new Error("RPC client unavailable");
       }
+
+      const targetLobbyId = activeLobby?.id ?? lobbyId;
+      if (targetLobbyId) {
+        const lid = BigInt(targetLobbyId);
+        const lobbyRow = (await publicClient.readContract({
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "getLobby",
+          args: [lid]
+        } as any)) as readonly unknown[] | Record<string, unknown>;
+        const lmStatus = Array.isArray(lobbyRow)
+          ? Number(lobbyRow[3] as bigint)
+          : Number((lobbyRow as Record<string, unknown>).status ?? 0);
+        const pool = (await publicClient.readContract({
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "sessionSponsorPool",
+          args: [lid]
+        } as any)) as bigint;
+        if ((lmStatus === 2 || lmStatus === 3) && pool > 0n) {
+          let distHash: `0x${string}`;
+          if (useAaForLobbyFollowups) {
+            await ensureLobbySession(targetLobbyId, address);
+            distHash = await sendSessionTransaction({
+              lobbyId: targetLobbyId,
+              contractAddress: lobbyManagerAddress,
+              contractAbi: lobbyManagerAbi,
+              functionName: "distributeSessionSponsorRemainder",
+              args: [lid]
+            });
+          } else {
+            distHash = await walletClient.writeContract({
+              address: lobbyManagerAddress,
+              abi: lobbyManagerAbi,
+              functionName: "distributeSessionSponsorRemainder",
+              account: address,
+              args: [lid]
+            } as any);
+          }
+          await publicClient.waitForTransactionReceipt({ hash: distHash });
+        }
+      }
+
       const hash = await walletClient.writeContract({
         address: lobbyManagerAddress,
         abi: lobbyManagerAbi,
@@ -1785,7 +1892,10 @@ function AppPage() {
     return (
       <div className="connect-screen">
         <h1>Lobby cancelled</h1>
-        <p>This lobby was cancelled. Refunds are credited on the lobby contract — use Claim to move ETH to your wallet.</p>
+        <p>
+          This lobby was cancelled. Claim first splits any remaining sponsor pool into per-player balances on the lobby
+          contract, then withdraws to your wallet.
+        </p>
         {lmWithdrawableWei != null ? (
           <p>
             <strong>Claimable on contract</strong>: {formatEther(lmWithdrawableWei)} ETH
@@ -1819,43 +1929,45 @@ function AppPage() {
     return (
       <div className="connect-screen">
         <h1>Match over</h1>
+        <p className="selected-text" style={{ maxWidth: "36rem" }}>
+          Entry fees fund account-abstraction gas (paymaster / EntryPoint). When the match settles, leftover sponsor
+          funds stay on the lobby until you claim; the claim step splits the pool into balances and then transfers yours
+          to your wallet.
+        </p>
         {winnerAddr ? (
           <>
             <p>
-              <strong>Winner</strong>: {short(winnerAddr)}
+              <strong>On-chain result</strong>: {short(winnerAddr)}
             </p>
             <p className="selected-text" style={{ wordBreak: "break-all" }}>
               {winnerAddr}
             </p>
             {declared ? (
-              <p>Recorded on the lobby contract (prize flow per contract rules).</p>
+              <p>The lobby contract recorded this outcome.</p>
             ) : lmActive ? (
               <p>
-                On-chain match is finished. The host can call <strong>completeGame</strong> on the lobby contract to
-                declare the official winner and unlock the prize pool.
+                GameCore has finished, but the lobby is still <strong>ACTIVE</strong>. The host can call{" "}
+                <code>completeGame</code> on the lobby contract to record the winner and release remaining sponsor funds
+                for withdrawal.
               </p>
             ) : (
-              <p>The match ended on-chain.</p>
+              <p>The lobby is closed on-chain.</p>
             )}
           </>
         ) : (
           <p>
-            The match ended on-chain (e.g. vote or stalemate). No single winner was inferred from game state — check
-            block explorer or wait for the host to complete the lobby.
+            The match ended without a single declared winner (e.g. abandon or vote). If the lobby is still active, the
+            host may call <code>completeGame</code> when appropriate.
           </p>
         )}
         {address && winnerAddr && address.toLowerCase() === winnerAddr.toLowerCase() ? (
           <p>
-            <strong>You won this match.</strong>
+            <strong>You are recorded as the winner on-chain.</strong>
           </p>
         ) : null}
-        <p className="selected-text">
-          Prizes are stored on the lobby contract as a balance — they are not sent automatically. If you have winnings or a
-          refund, claim them below.
-        </p>
         {lmWithdrawableWei != null ? (
           <p>
-            <strong>Claimable on contract</strong>: {formatEther(lmWithdrawableWei)} ETH
+            <strong>Your claimable balance on the lobby contract</strong>: {formatEther(lmWithdrawableWei)} ETH
           </p>
         ) : (
           <p>Reading your balance…</p>
@@ -1866,12 +1978,12 @@ function AppPage() {
             onClick={() => void onWithdrawLobbyBalance()}
             disabled={pendingAction === "lobby:withdraw"}
           >
-            {pendingAction === "lobby:withdraw" ? "Confirming…" : "Claim ETH to wallet"}
+            {pendingAction === "lobby:withdraw" ? "Confirming…" : "Withdraw to wallet"}
           </button>
         ) : lmWithdrawableWei != null && lmWithdrawableWei === 0n ? (
           <p className="selected-text">
-            No funds to claim for this wallet. If you expected a prize, the host may still need to call{" "}
-            <code>completeGame</code>, or the match may have ended without recording a winner on the lobby contract.
+            Nothing to withdraw for this wallet. If the lobby is still active, wait for settlement or for the host to
+            call <code>completeGame</code>.
           </p>
         ) : null}
         {error ? <p className="error-banner">{error}</p> : null}
