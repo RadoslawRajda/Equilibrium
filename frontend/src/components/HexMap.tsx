@@ -108,6 +108,15 @@ const tilePosition = (q: number, r: number) => {
   return [x, z] as const;
 };
 
+function seededUnit(value: string) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967295;
+}
+
 function getHexBaseHeight(biome: HexTile["biome"]) {
   return 0.6 + (biome === "Mountains" ? 0.25 : 0) + (biome === "Desert" ? -0.08 : 0);
 }
@@ -662,6 +671,11 @@ const HexTileMesh = memo(function HexTileMesh({
         : null,
     [level, structureAssetState?.scene, structureAssetState?.status]
   );
+  const structureRotation = useMemo<[number, number, number]>(() => {
+    const base = structureAssetConfig?.rotation ?? [0, 0, 0];
+    const randomYaw = seededUnit(`${hex.id}:house`) * Math.PI * 2;
+    return [base[0], base[1] + randomYaw, base[2]];
+  }, [hex.id, structureAssetConfig?.rotation]);
   const hasTextureOverride = Boolean(biomeAssetConfig?.textureUrl);
   const canUseBiomeAsset = Boolean(
     biomeAssetInstance && (!hasTextureOverride || biomeTextureState?.status === "ready")
@@ -959,7 +973,7 @@ const HexTileMesh = memo(function HexTileMesh({
             <primitive
               object={structureAssetInstance}
               position={structureAssetConfig?.position ?? [0, 0, 0]}
-              rotation={structureAssetConfig?.rotation ?? [0, 0, 0]}
+              rotation={structureRotation}
               scale={structureAssetConfig?.scale ?? [1, 1, 1]}
             />
           ) : (
