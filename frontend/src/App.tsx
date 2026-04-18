@@ -1,3 +1,4 @@
+import { mapGameError } from './lib/errorMapper';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import confetti from "canvas-confetti";
@@ -876,7 +877,7 @@ function AppPage() {
       } catch (e) {
         if (!cancelled) {
           setRegistryAgents([]);
-          setChainRegistryAgentsError(e instanceof Error ? e.message : String(e));
+          setChainRegistryAgentsError(mapGameError(e));
         }
       }
     };
@@ -1116,7 +1117,7 @@ function AppPage() {
       await syncActiveLobbyFromChain(String(createdLobbyId));
       confetti({ particleCount: 100, spread: 75, origin: { y: 0.75 } });
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
       console.error("Failed to create lobby", e);
     } finally {
       setIsCreatingLobby(false);
@@ -1134,7 +1135,7 @@ function AppPage() {
         throw new Error("Unable to load lobby from chain");
       }
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
       console.error("Failed to open lobby", e);
     }
   };
@@ -1179,7 +1180,7 @@ function AppPage() {
       await syncActiveLobbyFromChain(activeLobby.id);
       await syncLobbiesFromChain();
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
       console.error("Failed to buy ticket", e);
     }
   };
@@ -1260,7 +1261,7 @@ function AppPage() {
       }
       await syncLobbiesFromChain();
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
     } finally {
       setStartingLobby(false);
     }
@@ -1283,7 +1284,7 @@ function AppPage() {
       setSelectedHex(undefined);
       await syncLobbiesFromChain();
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
     }
   };
 
@@ -1305,7 +1306,7 @@ function AppPage() {
       setSelectedHex(undefined);
       await syncLobbiesFromChain();
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
       console.error("leaveOpenLobby failed", e);
     } finally {
       setPendingAction(null);
@@ -1342,7 +1343,7 @@ function AppPage() {
       await syncActiveLobbyFromChain(activeLobby.id);
       await syncLobbiesFromChain();
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
       console.error("hostKickOpenLobbyPlayer failed", e);
     } finally {
       setPendingAction(null);
@@ -1375,7 +1376,7 @@ function AppPage() {
       }
       await publicClient.waitForTransactionReceipt({ hash: txHash });
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
     } finally {
       setPendingAction(null);
     }
@@ -1445,7 +1446,7 @@ function AppPage() {
       await publicClient.waitForTransactionReceipt({ hash });
       setLmWithdrawableWei(0n);
     } catch (e: any) {
-      setError(e.message);
+      setError(mapGameError(e));
       console.error("withdraw failed", e);
     } finally {
       setPendingAction(null);
@@ -1655,7 +1656,7 @@ function AppPage() {
         setActiveLobby(lobbySnapshotRef.current);
         localHexOverridesRef.current.delete(`${lobbySnapshotRef.current.id}:${payload.hexId}`);
       }
-      setError(e.message);
+      setError(mapGameError(e));
     } finally {
       lobbySnapshotRef.current = null;
       setPendingAction(null);
@@ -2114,7 +2115,21 @@ function AppPage() {
             This wallet is not a player in this lobby. Connect a wallet that holds a ticket for this match.
           </p>
         ) : null}
-        {error && <p className="error-banner">{error}</p>}
+        <div className="error-banner-container">
+          <p className={`error-banner ${error ? 'visible' : 'hidden'}`}>
+            <span>{error || " "}</span>
+            {error && (
+              <button 
+                type="button" 
+                className="error-close-btn" 
+                onClick={() => setError("")}
+                aria-label="Close error"
+              >
+                &times;
+              </button>
+            )}
+          </p>
+        </div>
       </main>
 
       {!isSpectator ? (
@@ -2393,7 +2408,7 @@ function AppPage() {
             request: { ...tradeRequestDraft }
           });
         } catch (e: any) {
-          setError(e.message);
+          setError(mapGameError(e));
         }
       }}
     >
@@ -2485,7 +2500,7 @@ function AppPage() {
                           effect: preset.effect
                         });
                       } catch (e: any) {
-                        setError(e.message);
+                        setError(mapGameError(e));
                       }
                     }}
                   >
@@ -2612,7 +2627,7 @@ function AppPage() {
               await action("barter:accept", { barterId: tradeId });
               setTradeOffersModalOpen(false);
             } catch (e: any) {
-              setError(e.message);
+              setError(mapGameError(e));
             }
           }}
         />

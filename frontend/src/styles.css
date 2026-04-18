@@ -786,6 +786,12 @@ button.lobby-kick-btn.danger:disabled {
   color: white;
 }
 
+.error-banner-container {
+  min-height: 52px;
+  width: 100%;
+  margin-top: auto;
+}
+
 .error-banner {
   margin: 0;
   padding: 0.6rem 0.8rem;
@@ -793,6 +799,33 @@ button.lobby-kick-btn.danger:disabled {
   background: rgba(255, 125, 125, 0.2);
   border: 1px solid rgba(255, 125, 125, 0.6);
   color: #ffd0d0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.error-banner.hidden {
+  visibility: hidden;
+}
+
+.error-banner.visible {
+  visibility: visible;
+}
+
+.error-close-btn {
+  background: transparent;
+  border: none;
+  color: #ffd0d0;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+
+.error-close-btn:hover {
+  color: #fff;
 }
 
 /* Spectator: left roster + full-width map (no right action menu) */
