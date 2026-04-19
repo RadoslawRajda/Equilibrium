@@ -25,16 +25,20 @@ const PORT = Number(process.env.PORT ?? 9100);
 const RPC_URL = process.env.RPC_URL ?? "http://ganache:8545";
 const DEPLOYMENTS_PATH = process.env.DEPLOYMENTS_PATH ?? "/contracts/deployments/localhost.json";
 const POLL_MS = Number(process.env.POLL_MS ?? 10000);
-const MNEMONIC =
-  process.env.MNEMONIC ??
-  "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat";
-const BUNDLER_EXECUTOR_KEY =
-  process.env.BUNDLER_EXECUTOR_KEY ??
-  "0xc87509a1c067bbde78beb793e6fa76530b6382a4c0241e5e4a9ec0a0f44dc0d3";
-const BUNDLER_UTILITY_KEY =
-  process.env.BUNDLER_UTILITY_KEY ??
-  "0xae6ae8e5ccbfb04590405997ee2d52d2b330726137b875053c36d94e974d162f";
+const MNEMONIC = process.env.MNEMONIC ?? process.env.ANVIL_MNEMONIC;
+const BUNDLER_EXECUTOR_KEY = process.env.BUNDLER_EXECUTOR_KEY;
+const BUNDLER_UTILITY_KEY = process.env.BUNDLER_UTILITY_KEY;
 const BUNDLER_RPC_URL = process.env.BUNDLER_RPC_URL ?? "http://paymaster:4337";
+
+if (!MNEMONIC) {
+  throw new Error("Missing required env: MNEMONIC (or ANVIL_MNEMONIC)");
+}
+if (!BUNDLER_EXECUTOR_KEY) {
+  throw new Error("Missing required env: BUNDLER_EXECUTOR_KEY");
+}
+if (!BUNDLER_UTILITY_KEY) {
+  throw new Error("Missing required env: BUNDLER_UTILITY_KEY");
+}
 
 // ---------------------------------------------------------------------------
 // Prometheus registry
