@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, BatteryCharging, Factory, Gem, Pickaxe, TreePine, Wheat } from "lucide-react";
+import { ArrowLeft, BatteryCharging, CircleHalf, Factory, Gem, Pickaxe, TreePine, Wheat } from "lucide-react";
 import type { PlayerState } from "../types";
 
 type Props = {
@@ -7,6 +7,8 @@ type Props = {
   round: number;
   effects: Array<{ id: string; label: string; remainingRounds: number }>;
   onBack?: () => void;
+  highContrastEnabled?: boolean;
+  onToggleHighContrast?: () => void;
 };
 
 const Item = ({ icon: Icon, label, value, accent }: { icon: any; label: string; value: number; accent: string }) => (
@@ -19,7 +21,7 @@ const Item = ({ icon: Icon, label, value, accent }: { icon: any; label: string; 
   </motion.div>
 );
 
-export function ResourcePanel({ me, round, effects, onBack }: Props) {
+export function ResourcePanel({ me, round, effects, onBack, highContrastEnabled = false, onToggleHighContrast }: Props) {
   return (
     <aside className="panel left-panel">
       {onBack && (
@@ -37,6 +39,19 @@ export function ResourcePanel({ me, round, effects, onBack }: Props) {
         <Item icon={Factory} label="Alloy" value={me?.craftedGoods ?? 0} accent="#e0b0ff" />
       </div>
 
+      <div style={{ marginTop: "1rem" }}>
+        <button
+          type="button"
+          className="ghost-button"
+          onClick={onToggleHighContrast}
+          title={`High Contrast: ${highContrastEnabled ? "ON" : "OFF"}`}
+          aria-label={`High Contrast: ${highContrastEnabled ? "ON" : "OFF"}`}
+          style={{ width: "100%", justifyContent: "center", position: "relative" }}
+        >
+          <CircleHalf className="hc-icon" size={16} style={{ position: "absolute", left: "1rem" }} />
+          High Contrast
+        </button>
+      </div>
 
     </aside>
   );

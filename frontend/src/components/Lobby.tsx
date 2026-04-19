@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { PlusCircle, Wallet, LogOut, Trophy, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { formatEther } from "viem";
+import { PolicyTiles } from "./PolicyTiles";
 
 type LobbySummary = {
   id: string;
@@ -113,6 +114,8 @@ export function Lobby({
           </motion.div>
         ))}
       </section>
+
+      <PolicyTiles variant="floating" className="policy-tiles--main-corner" />
     </div>
   );
 }
