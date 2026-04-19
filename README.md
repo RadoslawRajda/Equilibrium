@@ -104,7 +104,8 @@ The repository is organized as a monorepo with dedicated modules:
 ### Full stack (recommended)
 
 ```bash
-docker compose up --build
+cp .env.example .env
+docker compose --env-file .env up --build
 ```
 
 ### Contracts
