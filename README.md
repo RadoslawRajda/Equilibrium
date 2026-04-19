@@ -4,6 +4,8 @@ Made during ETHSilesia 2026 hackathon.
 
 Equilibrium is a strategic resource game built as a fully decentralized Ethereum application, enhanced with AI agents and an in-game AI assistant.
 
+Video presentation: <a href="https://youtu.be/SKnf5tqz7ws?si=w2pAi3zzUspmGaBE">https://youtu.be/SKnf5tqz7ws?si=w2pAi3zzUspmGaBE</a>
+
 ## Team
 
 - Radosław Rajda
