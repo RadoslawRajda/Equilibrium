@@ -291,7 +291,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                           fontSize: '11px',
                           color: '#c92a2a'
                         }}>
-                          <strong>Not enough resources!</strong> Need {requiredAmount} {props.bankSellKind},you have {sellResourceAmount}
+                          <strong>Not enough resources!</strong>
                         </div>
                       )}
                       <button 

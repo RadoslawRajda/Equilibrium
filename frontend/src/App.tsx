@@ -63,6 +63,7 @@ import {
   FALLBACK_LOBBY_ZERO_ROUND_SECONDS
 } from "./lib/chainGameDefaults";
 import { fetchLobbyTradeActivityLog, type TradeFeedItem } from "./lib/tradeActivityFeed";
+import { canCreateEndRoundProposal, getEndRoundProposalCloseRound, END_ROUND_CLOSE_ROUNDS_AHEAD } from "./lib/voteUtils";
 import { colorFromAddress } from "./utils/helpers/converters";
 import * as Select from '@radix-ui/react-select';
 import * as Accordion from '@radix-ui/react-accordion';
@@ -241,6 +242,12 @@ function AppPage() {
     return saved === "2d" || saved === "3d" ? saved : envDefault;
   });
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [locallyVotedProposalKeys, setLocallyVotedProposalKeys] = useState<Record<string, true>>({});
+  const [dismissedVoteKeys, setDismissedVoteKeys] = useState<Record<string, true>>({});
+  const [seenFailedVoteKeys, setSeenFailedVoteKeys] = useState<Record<string, true>>({});
+  const [seenPassedVoteKeys, setSeenPassedVoteKeys] = useState<Record<string, true>>({});
+  const [voteNotice, setVoteNotice] = useState<{ key: string; message: string; type?: "error" | "info" | "success" } | null>(null);
+  const [voteNoticePhase, setVoteNoticePhase] = useState<"hidden" | "visible" | "fading">("hidden");
   const [error, setError] = useState<string>("");
   const [mapErrorMessage, setMapErrorMessage] = useState("");
   const [mapErrorPhase, setMapErrorPhase] = useState<"hidden" | "visible" | "fading">("hidden");
@@ -264,12 +271,12 @@ function AppPage() {
     energy: 0
   });
   const RESOURCE_MAP = [
-  { label: "food", icon: Wheat, color: "#ffd369" },
-  { label: "wood", icon: TreePine, color: "#5bff9d" },
-  { label: "stone", icon: Pickaxe, color: "#96b7ff" },
-  { label: "ore", icon: Gem, color: "#ff9f6e" },
-  { label: "energy", icon: BatteryCharging, color: "#56f0ff" }
-];
+    { label: "food", icon: Wheat, color: "#ffd369" },
+    { label: "wood", icon: TreePine, color: "#5bff9d" },
+    { label: "stone", icon: Pickaxe, color: "#96b7ff" },
+    { label: "ore", icon: Gem, color: "#ff9f6e" },
+    { label: "energy", icon: BatteryCharging, color: "#56f0ff" }
+  ];
   const [bankSellKind, setBankSellKind] = useState<string>("food");
   const [bankBuyKind, setBankBuyKind] = useState<string>("wood");
   const [bankBulkLots, setBankBulkLots] = useState(1);
@@ -336,6 +343,15 @@ function AppPage() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem("cryptocatan:map-renderer", mapRenderer);
   }, [mapRenderer]);
+
+  useEffect(() => {
+    setLocallyVotedProposalKeys({});
+    setDismissedVoteKeys({});
+    setSeenFailedVoteKeys({});
+    setSeenPassedVoteKeys({});
+    setVoteNotice(null);
+    setVoteNoticePhase("hidden");
+  }, [activeLobby?.id]);
 
   const lobbyManagerAddress = contracts?.contracts?.LobbyManager?.address as `0x${string}` | undefined;
   const lobbyManagerAbi = contracts?.contracts?.LobbyManager?.abi;
@@ -588,7 +604,7 @@ function AppPage() {
 
     const smartAccountAddress = assertSessionAddress(
       (smartAccount.address as `0x${string}` | undefined) ??
-        ((await smartAccount.getAddress()) as `0x${string}` | undefined)
+      ((await smartAccount.getAddress()) as `0x${string}` | undefined)
     );
 
     return { smartAccount, smartAccountAddress };
@@ -621,7 +637,7 @@ function AppPage() {
 
     const owner = address.toLowerCase();
     const paymasterTag = (aaConfig.lobbySessionPaymasterAddress &&
-    !isZeroAddress(aaConfig.lobbySessionPaymasterAddress)
+      !isZeroAddress(aaConfig.lobbySessionPaymasterAddress)
       ? aaConfig.lobbySessionPaymasterAddress
       : "") as `0x${string}` | "";
 
@@ -664,15 +680,15 @@ function AppPage() {
     const paymasterMiddleware =
       paymasterTag !== ""
         ? {
-            getPaymasterData: async () => ({
-              paymaster: paymasterTag,
-              paymasterData: "0x" as `0x${string}`
-            }),
-            getPaymasterStubData: async () => ({
-              paymaster: paymasterTag,
-              paymasterData: "0x" as `0x${string}`
-            })
-          }
+          getPaymasterData: async () => ({
+            paymaster: paymasterTag,
+            paymasterData: "0x" as `0x${string}`
+          }),
+          getPaymasterStubData: async () => ({
+            paymaster: paymasterTag,
+            paymasterData: "0x" as `0x${string}`
+          })
+        }
         : undefined;
 
     const smartAccountClient = createSmartAccountClient({
@@ -797,8 +813,8 @@ function AppPage() {
   const isLobbyHost = Boolean(activeLobby && address && activeLobby.host.toLowerCase() === address.toLowerCase());
   const hasLobbyTicket = Boolean(
     activeLobby?.viewerLobbyManagerTicket ||
-      activeLobby?.me?.hasTicket ||
-      activeLobby?.players?.some((player) => player.address.toLowerCase() === address?.toLowerCase())
+    activeLobby?.me?.hasTicket ||
+    activeLobby?.players?.some((player) => player.address.toLowerCase() === address?.toLowerCase())
   );
   const canStartLobby = Boolean(activeLobby && activeLobby.status === "waiting" && isLobbyHost && activeLobby.players.length >= 1);
 
@@ -807,8 +823,8 @@ function AppPage() {
     () =>
       Boolean(
         activeLobby &&
-          (activeLobby.status === "zero-round" || activeLobby.status === "running") &&
-          activeLobby.me === null
+        (activeLobby.status === "zero-round" || activeLobby.status === "running") &&
+        activeLobby.me === null
       ),
     [activeLobby]
   );
@@ -1138,6 +1154,60 @@ function AppPage() {
     };
   }, [activeLobby?.status, error]);
 
+  useEffect(() => {
+    if (!activeLobby || activeLobby.status === "waiting") return;
+
+    const allUnresolvedVotes = (activeLobby.globalVotes ?? [])
+      .filter((vote: { resolved?: boolean }) => !vote.resolved);
+
+    const nextFailedVote = allUnresolvedVotes.find((vote: any) => {
+      const key = `${activeLobby.id}:${vote.id}`;
+      return Number(vote.noVotes ?? 0) > 0 && !seenFailedVoteKeys[key];
+    });
+
+    const passedVotes = (activeLobby.globalVotes ?? []).filter((vote: any) => vote.resolved && vote.passed);
+    const nextPassedVote = passedVotes.find((vote: any) => {
+      const key = `${activeLobby.id}:${vote.id}`;
+      return !seenPassedVoteKeys[key];
+    });
+
+    if (nextPassedVote) {
+      const voteKey = `${activeLobby.id}:${nextPassedVote.id}`;
+      setSeenPassedVoteKeys((current) => ({ ...current, [voteKey]: true }));
+      setVoteNotice({
+        key: voteKey,
+        message: `Vote passed successfully: ${nextPassedVote.title}.`,
+        type: "success"
+      });
+      setVoteNoticePhase("visible");
+      return;
+    }
+
+    if (!nextFailedVote) return;
+
+    const voteKey = `${activeLobby.id}:${nextFailedVote.id}`;
+    setSeenFailedVoteKeys((current) => ({ ...current, [voteKey]: true }));
+    setVoteNotice({
+      key: voteKey,
+      message: "Voting failed. Wait for end of voting round.",
+      type: "info"
+    });
+    setVoteNoticePhase("visible");
+  }, [activeLobby, seenFailedVoteKeys, seenPassedVoteKeys]);
+
+  useEffect(() => {
+    if (!voteNotice) return;
+    const fadeTimeout = window.setTimeout(() => setVoteNoticePhase("fading"), 10000);
+    const hideTimeout = window.setTimeout(() => {
+      setVoteNoticePhase("hidden");
+      setVoteNotice(null);
+    }, 13000);
+    return () => {
+      window.clearTimeout(fadeTimeout);
+      window.clearTimeout(hideTimeout);
+    };
+  }, [voteNotice?.key]);
+
   const formatCountdown = (secondsLeft: number | null) => {
     if (secondsLeft === null) return "--:--";
     const totalSeconds = Math.max(0, Math.floor(secondsLeft));
@@ -1212,19 +1282,19 @@ function AppPage() {
 
       const bootstrapHash = useAaForLobbyFollowups
         ? await sendSessionTransaction({
-            lobbyId: String(createdLobbyId),
-            contractAddress: gameCoreAddress,
-            contractAbi: gameCoreAbi,
-            functionName: "bootstrapLobby",
-            args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
-          })
+          lobbyId: String(createdLobbyId),
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
+          functionName: "bootstrapLobby",
+          args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
+        })
         : await walletClient.writeContract({
-            address: gameCoreAddress,
-            abi: gameCoreAbi,
-            functionName: "bootstrapLobby",
-            account: address,
-            args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
-          } as any);
+          address: gameCoreAddress,
+          abi: gameCoreAbi,
+          functionName: "bootstrapLobby",
+          account: address,
+          args: [BigInt(createdLobbyId), address, mapSeed, BigInt(radius)]
+        } as any);
 
       const bootstrapReceipt = await publicClient.waitForTransactionReceipt({
         hash: bootstrapHash as `0x${string}`
@@ -1296,19 +1366,19 @@ function AppPage() {
 
       const joinHash = useAaForLobbyFollowups
         ? await sendSessionTransaction({
-            lobbyId: activeLobby.id,
-            contractAddress: gameCoreAddress,
-            contractAbi: gameCoreAbi,
-            functionName: "joinLobby",
-            args: [BigInt(activeLobby.id)]
-          })
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
+          functionName: "joinLobby",
+          args: [BigInt(activeLobby.id)]
+        })
         : await walletClient.writeContract({
-            address: gameCoreAddress,
-            abi: gameCoreAbi,
-            functionName: "joinLobby",
-            account: address,
-            args: [BigInt(activeLobby.id)]
-          } as any);
+          address: gameCoreAddress,
+          abi: gameCoreAbi,
+          functionName: "joinLobby",
+          account: address,
+          args: [BigInt(activeLobby.id)]
+        } as any);
       await publicClient.waitForTransactionReceipt({ hash: joinHash as `0x${string}` });
       confetti({ particleCount: 100, spread: 75, origin: { y: 0.75 } });
       await syncActiveLobbyFromChain(activeLobby.id);
@@ -1330,19 +1400,19 @@ function AppPage() {
 
       const lobbyStartHash = useAaForLobbyFollowups
         ? await sendSessionTransaction({
-            lobbyId: activeLobby.id,
-            contractAddress: lobbyManagerAddress,
-            contractAbi: lobbyManagerAbi,
-            functionName: "startGame",
-            args: [BigInt(activeLobby.id)]
-          })
+          lobbyId: activeLobby.id,
+          contractAddress: lobbyManagerAddress,
+          contractAbi: lobbyManagerAbi,
+          functionName: "startGame",
+          args: [BigInt(activeLobby.id)]
+        })
         : await walletClient.writeContract({
-            address: lobbyManagerAddress,
-            abi: lobbyManagerAbi,
-            functionName: "startGame",
-            account: address,
-            args: [BigInt(activeLobby.id)]
-          } as any);
+          address: lobbyManagerAddress,
+          abi: lobbyManagerAbi,
+          functionName: "startGame",
+          account: address,
+          args: [BigInt(activeLobby.id)]
+        } as any);
       const lobbyStartReceipt = await publicClient.waitForTransactionReceipt({ hash: lobbyStartHash as `0x${string}` });
       if (lobbyStartReceipt.status !== "success") {
         throw new Error("LobbyManager.startGame transaction reverted");
@@ -1353,29 +1423,29 @@ function AppPage() {
       }
       const gameStartHash = useAaForLobbyFollowups
         ? await sendSessionTransaction({
-            lobbyId: activeLobby.id,
-            contractAddress: gameCoreAddress,
-            contractAbi: gameCoreAbi,
-            functionName: "startGame",
-            args: [
-              BigInt(activeLobby.id),
-              BigInt(chainLobbyPhaseDefaults?.zeroRoundSeconds ?? FALLBACK_LOBBY_ZERO_ROUND_SECONDS),
-              BigInt(chainLobbyPhaseDefaults?.runningRoundSeconds ?? FALLBACK_LOBBY_RUNNING_ROUND_SECONDS),
-              lobbyManagerAddress
-            ]
-          })
+          lobbyId: activeLobby.id,
+          contractAddress: gameCoreAddress,
+          contractAbi: gameCoreAbi,
+          functionName: "startGame",
+          args: [
+            BigInt(activeLobby.id),
+            BigInt(chainLobbyPhaseDefaults?.zeroRoundSeconds ?? FALLBACK_LOBBY_ZERO_ROUND_SECONDS),
+            BigInt(chainLobbyPhaseDefaults?.runningRoundSeconds ?? FALLBACK_LOBBY_RUNNING_ROUND_SECONDS),
+            lobbyManagerAddress
+          ]
+        })
         : await walletClient.writeContract({
-            address: gameCoreAddress,
-            abi: gameCoreAbi,
-            functionName: "startGame",
-            account: address,
-            args: [
-              BigInt(activeLobby.id),
-              BigInt(chainLobbyPhaseDefaults?.zeroRoundSeconds ?? FALLBACK_LOBBY_ZERO_ROUND_SECONDS),
-              BigInt(chainLobbyPhaseDefaults?.runningRoundSeconds ?? FALLBACK_LOBBY_RUNNING_ROUND_SECONDS),
-              lobbyManagerAddress
-            ]
-          } as any);
+          address: gameCoreAddress,
+          abi: gameCoreAbi,
+          functionName: "startGame",
+          account: address,
+          args: [
+            BigInt(activeLobby.id),
+            BigInt(chainLobbyPhaseDefaults?.zeroRoundSeconds ?? FALLBACK_LOBBY_ZERO_ROUND_SECONDS),
+            BigInt(chainLobbyPhaseDefaults?.runningRoundSeconds ?? FALLBACK_LOBBY_RUNNING_ROUND_SECONDS),
+            lobbyManagerAddress
+          ]
+        } as any);
       const gameStartReceipt = await publicClient.waitForTransactionReceipt({ hash: gameStartHash as `0x${string}` });
       if (gameStartReceipt.status !== "success") {
         throw new Error("GameCore.startGame transaction reverted");
@@ -1729,6 +1799,7 @@ function AppPage() {
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
       } else if (event === "vote:create") {
+        setPendingAction("vote:create");
         const effectKey =
           payload.effect?.special === "__END_ROUND__"
             ? "__END_ROUND__"
@@ -1739,7 +1810,7 @@ function AppPage() {
           effectKey === "__END_GAME__" && activeLobby.status === "zero-round"
             ? 0
             : effectKey === "__END_ROUND__"
-              ? 999
+              ? getEndRoundProposalCloseRound(activeLobby.rounds.index)
               : activeLobby.rounds.index + 3;
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
@@ -1772,6 +1843,7 @@ function AppPage() {
         setIkoTradeSuccessMessage(`Traded ${times} lot(s)!`);
         setIkoTradeSuccessNotification(true);
       } else if (event === "vote:cast") {
+        setPendingAction("vote:cast");
         const txHash = await sendSessionTransaction({
           lobbyId: activeLobby.id,
           contractAddress: gameCoreAddress,
@@ -1780,6 +1852,8 @@ function AppPage() {
           args: [lobbyId, BigInt(payload.voteId), Boolean(payload.support)]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+        const voteKey = `${activeLobby.id}:${payload.voteId}`;
+        setLocallyVotedProposalKeys((current) => ({ ...current, [voteKey]: true }));
       } else if (event === "game:end-round") {
         const roundSecs =
           activeLobby.rounds.durationSeconds && activeLobby.rounds.durationSeconds > 0
@@ -1808,6 +1882,13 @@ function AppPage() {
       if (event === "game:pick-start" && lobbySnapshotRef.current) {
         setActiveLobby(lobbySnapshotRef.current);
         localHexOverridesRef.current.delete(`${lobbySnapshotRef.current.id}:${payload.hexId}`);
+      }
+      if (event === "vote:cast") {
+        const rawErrorText = String(e?.message || e?.shortMessage || e || "").toLowerCase();
+        if (rawErrorText.includes("already voted")) {
+          const voteKey = `${activeLobby.id}:${payload.voteId}`;
+          setLocallyVotedProposalKeys((current) => ({ ...current, [voteKey]: true }));
+        }
       }
       setError(mapGameError(e));
     } finally {
@@ -2311,6 +2392,142 @@ function AppPage() {
     );
   }
 
+  const canProposeEndRound = canCreateEndRoundProposal({
+    status: activeLobby.status,
+    pendingAction,
+    me: activeLobby.me
+  });
+  const allUnresolvedVotes = (activeLobby.globalVotes ?? [])
+    .filter((vote: { resolved?: boolean }) => !vote.resolved)
+    .filter((vote: any) => {
+      if (vote.effectKey === "__END_ROUND__") {
+        const createdRound = vote.closesAtRound - END_ROUND_CLOSE_ROUNDS_AHEAD;
+        return createdRound >= projectedRound.index;
+      }
+      return vote.closesAtRound >= projectedRound.index;
+    });
+  const unresolvedVotes = allUnresolvedVotes
+    .filter((vote: any) => !dismissedVoteKeys[`${activeLobby.id}:${vote.id}`])
+    .slice(0, 8);
+  const hasVoteInProgress = unresolvedVotes.length > 0;
+  const canCreateEndRoundVote = canProposeEndRound && !hasVoteInProgress;
+
+  const renderActiveVote = (vote: any) => {
+    const participantCount = Math.max(1, activeLobby.players.length || 1);
+    const yesVotes = Math.max(0, Number(vote.yesVotes ?? 0));
+    const noVotes = Math.max(0, Number(vote.noVotes ?? 0));
+    const noVoteCount = Math.max(0, participantCount - yesVotes - noVotes);
+    const yesPercentage = (yesVotes / participantCount) * 100;
+    const noPercentage = (noVotes / participantCount) * 100;
+    const noVotePercentage = (noVoteCount / participantCount) * 100;
+    const voteKey = `${activeLobby.id}:${vote.id}`;
+    const alreadyVotedLocally = Boolean(locallyVotedProposalKeys[voteKey]);
+    const voteButtonsDisabled = Boolean(pendingAction) || alreadyVotedLocally;
+    const voteFailedByNo = noVotes > 0;
+    return (
+
+      <div key={vote.id} className="vote-item" style={{ borderTop: '1px solid #333', padding: '12px', borderRadius: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+          <p style={{ margin: 0 }}><strong>{vote.title}</strong></p>
+
+        </div>
+        <p className="selected-text" style={{ fontSize: '13px', marginBottom: '8px' }}>
+          {vote.effectKey === "__END_ROUND__"
+            ? "End current round (unanimous yes, no “no” votes)"
+            : vote.effectKey === "__END_GAME__"
+              ? "End the match"
+              : vote.effectKey}
+        </p>
+        <p className="selected-text" style={{ fontSize: '12px', color: '#aaa', marginBottom: '8px' }}>Closes after round {vote.closesAtRound}</p>
+        {voteFailedByNo ? <p className="selected-text" style={{ color: '#ff9999', fontSize: '12px', marginBottom: '8px' }}>⚠ Failed: No votes cast</p> : null}
+
+        <div style={{ marginBottom: '10px' }}>
+          <div
+            aria-label={`Vote progress: Yes ${yesVotes} vs No ${noVotes} vs No vote ${noVoteCount}`}
+            style={{
+              display: 'flex',
+              height: '20px',
+              borderRadius: '6px',
+              overflow: 'hidden',
+              background: 'rgba(100,100,100,0.15)',
+              border: '1px solid rgba(150,150,150,0.2)',
+              color: '#fffff'
+            }}
+          >
+            <div
+              style={{
+                flex: yesPercentage,
+                background: yesVotes > 0 ? 'rgba(0, 255, 8, 0.6)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '11px',
+                fontWeight: '600',
+                color: yesVotes > 0 ? '#ffffff' : '#ffffff',
+                minWidth: yesVotes > 0 ? '30px' : '0'
+              }}
+            >
+              {yesVotes > 0 ? `✓ ${yesVotes}` : ''}
+            </div>
+            <div
+              style={{
+                flex: noVotePercentage,
+                background: 'rgba(100,100,100,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '11px',
+                fontWeight: '600',
+                color: '#999',
+                minWidth: noVoteCount > 0 ? '20px' : '0'
+              }}
+            >
+              {noVoteCount > 0 ? `${noVoteCount}` : ''}
+            </div>
+            <div
+              style={{
+                flex: noPercentage,
+                background: noVotes > 0 ? 'rgba(255, 17, 0, 0.6)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '11px',
+                fontWeight: '600',
+                color: noVotes > 0 ? '#ffffff' : '#ffffff',
+                minWidth: noVotes > 0 ? '30px' : '0'
+              }}
+            >
+              {noVotes > 0 ? `✗ ${noVotes}` : ''}
+            </div>
+          </div>
+          <p className="selected-text" style={{ marginTop: '6px', fontSize: '12px', color: '#999' }}>
+            {yesVotes} Yes · {noVotes} No · {noVoteCount} No vote · {participantCount} Players
+          </p>
+        </div>
+
+        <div className="vote-buttons" style={{ display: 'flex', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}
+            disabled={voteButtonsDisabled}
+            style={{ flex: 1, borderRadius: '6px' }}
+          >
+            Vote Yes
+          </button>
+          <button
+            type="button"
+            onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}
+            disabled={voteButtonsDisabled}
+            style={{ flex: 1, borderRadius: '6px' }}
+          >
+            Vote No
+          </button>
+        </div>
+        {alreadyVotedLocally ? <p className="selected-text" style={{ fontSize: '12px', color: '#aaa', marginTop: '8px' }}>✓ Your vote locked</p> : null}
+      </div>
+    );
+  };
+
   return (
     <div className={`game-shell${isSpectator ? " game-shell--spectator" : ""}`}>
       {isSpectator ? (
@@ -2424,102 +2641,103 @@ function AppPage() {
       </main>
 
       {!isSpectator ? (
-      <aside className="panel right-panel">
-        {activeLobby.status === "zero-round" && myTurnInZeroRound ? (
-          <div className="action-group">
-            <h4>Round 0 — start</h4>
-            <p className="selected-text">
-              Click a free hex on the map, then confirm here. The pick is sent only after you press the button.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                if (!selectedHex) return;
-                action("game:pick-start", { hexId: selectedHex }, true);
-              }}
-              disabled={
-                Boolean(pendingAction) ||
-                !selectedHex ||
-                Boolean(activeLobby.mapHexes.find((h) => h.id === selectedHex)?.owner)
-              }
-            >
-              Confirm starting hex {selectedHex ? `(${selectedHex})` : ""}
-            </button>
-          </div>
-        ) : null}
+        <aside className="panel right-panel">
+          {activeLobby.status === "zero-round" && myTurnInZeroRound ? (
+            <div className="action-group">
+              <h4>Round 0 — start</h4>
+              <p className="selected-text">
+                Click a free hex on the map, then confirm here. The pick is sent only after you press the button.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedHex) return;
+                  action("game:pick-start", { hexId: selectedHex }, true);
+                }}
+                disabled={
+                  Boolean(pendingAction) ||
+                  !selectedHex ||
+                  Boolean(activeLobby.mapHexes.find((h) => h.id === selectedHex)?.owner)
+                }
+              >
+                Confirm starting hex {selectedHex ? `(${selectedHex})` : ""}
+              </button>
+            </div>
+          ) : null}
 
-        {activeLobby.status === "zero-round" && !myTurnInZeroRound ? (
-          <div className="action-group">
-            <h4>Round 0</h4>
-            <p className="selected-text">You already chose a starting hex. Waiting for other players…</p>
-          </div>
-        ) : null}
+          {activeLobby.status === "zero-round" && !myTurnInZeroRound ? (
+            <div className="action-group">
+              <h4>Round 0</h4>
+              <p className="selected-text">You already chose a starting hex. Waiting for other players…</p>
+            </div>
+          ) : null}
 
-      <div className="action-group">
-        <h4>Players</h4>
-        {activeLobby.players.map((player) => (
-          <div 
-            key={player.address} 
-            className="player-row"
-            style={{ 
-              borderLeft: `1px solid ${colorFromAddress(player.address)}`, // Dodaje kolorowy pasek z boku
-              borderRight: `1px solid ${colorFromAddress(player.address)}`, // Opcjonalnie delikatna ramka z prawej
-              paddingLeft: '16px' // Mały odstęp, żeby tekst nie dotykał paska
+          <div className="action-group">
+            <h4>Players</h4>
+            {activeLobby.players.map((player) => (
+              <div
+                key={player.address}
+                className="player-row"
+                style={{
+                  borderLeft: `1px solid ${colorFromAddress(player.address)}`, // Dodaje kolorowy pasek z boku
+                  borderRight: `1px solid ${colorFromAddress(player.address)}`, // Opcjonalnie delikatna ramka z prawej
+                  paddingLeft: '16px' // Mały odstęp, żeby tekst nie dotykał paska
+                }}
+              >
+                <div>
+                  <strong style={{ color: colorFromAddress(player.address) }}>
+                    {player.nickname}
+                  </strong>
+                  <p>
+                    {short(player.address)} {player.address.toLowerCase() === activeLobby.host.toLowerCase() ? "• host" : ""}{" "}
+                    {player.alive === false ? "• out" : ""}
+                  </p>
+                </div>
+                <span
+                  className="player-tag"
+                  style={{
+                    color: player.alive === false ? '#666' : colorFromAddress(player.address),
+                    paddingRight: '16px'
+                  }}
+                >
+                  {player.alive === false ? "eliminated" : "active"}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="iko-launcher-tile action-group"
+            onClick={() => setIsIkoOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              paddingLeft: '24px',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              border: '1px solid rgba(255,255,255,0.1)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
             }}
           >
-            <div>
-              <strong style={{ color: colorFromAddress(player.address) }}>
-                {player.nickname}
-              </strong>
-              <p>
-                {short(player.address)} {player.address.toLowerCase() === activeLobby.host.toLowerCase() ? "• host" : ""}{" "}
-                {player.alive === false ? "• out" : ""}
-              </p>
-            </div>
-            <span 
-              className="player-tag"
-              style={{ color: player.alive === false ? '#666' : colorFromAddress(player.address),
-                       paddingRight: '16px'
-               }}
-            >
-              {player.alive === false ? "eliminated" : "active"}
-            </span>
+            <PkoLogoIcon size={22} />
+            <h4>Open IKO</h4>
           </div>
-        ))}
-      </div>
 
-      <div 
-        className="iko-launcher-tile action-group" 
-        onClick={() => setIsIkoOpen(true)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          paddingLeft: '24px',
-          borderRadius: '12px',
-          cursor: 'pointer',
-          border: '1px solid rgba(255,255,255,0.1)',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-        }}
-      >
-        <PkoLogoIcon size={22} />
-        <h4>Open IKO</h4>
-      </div>
-          
-        <Accordion.Root type="single" collapsible className="AccordionRoot">
-          <Accordion.Item value="crafting" className="action-group" style={{ paddingTop: '0px'}}>
-            
-          <Accordion.Trigger className="AccordionTrigger">
-            <div className="TriggerLabel">
-              <Flame size={18} color="#ff8c42" style={{ filter: 'drop-shadow(0 0 2px rgba(255,140,66,0.4))' }} />
-              <h4>Forge</h4>
-            </div>
-            <ChevronDown size={16} className="AccordionChevron" />
-          </Accordion.Trigger>
+          <Accordion.Root type="single" collapsible className="AccordionRoot">
+            <Accordion.Item value="crafting" className="action-group" style={{ paddingTop: '0px' }}>
 
-            <Accordion.Content className="AccordionContent " >
+              <Accordion.Trigger className="AccordionTrigger">
+                <div className="TriggerLabel">
+                  <Flame size={18} color="#ff8c42" style={{ filter: 'drop-shadow(0 0 2px rgba(255,140,66,0.4))' }} />
+                  <h4>Forge</h4>
+                </div>
+                <ChevronDown size={16} className="AccordionChevron" />
+              </Accordion.Trigger>
+
+              <Accordion.Content className="AccordionContent " >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', padding: '10px', background: 'rgba(255,140,66,0.1)', borderRadius: '8px', border: '1px solid rgba(255,140,66,0.3)' }}>
-                  <Gem size={16} color="#e0b0ff" />
+                  <Factory size={16} color="#e0b0ff" />
                   <div style={{ fontSize: '12px', fontWeight: '600', color: '#e0b0ff' }}>
                     {projectedMe?.craftedGoods ?? 0} / {victoryAlloyTarget ?? '?'} alloy
                   </div>
@@ -2554,237 +2772,219 @@ function AppPage() {
                 >
                   <Flame size={16} /> Smelt Alloy
                 </button>
-            </Accordion.Content>
-          </Accordion.Item>
-        </Accordion.Root>
+              </Accordion.Content>
+            </Accordion.Item>
+          </Accordion.Root>
 
-        <Accordion.Root type="single" collapsible className="AccordionRoot">
-          <Accordion.Item value="votes" className="action-group" style={{ paddingTop: '0px' }}>
-            <Accordion.Trigger className="AccordionTrigger">
-              <div className="TriggerLabel">
-                <Vote size={18} color="#525252" />
-                <h4>{LIMITED_VOTING_UI ? "Round vote" : "Votes"}</h4>
-              </div>
-              <ChevronDown size={16} className="AccordionChevron" />
-            </Accordion.Trigger>
+          <Accordion.Root type="single" collapsible className="AccordionRoot">
+            <Accordion.Item value="votes" className="action-group" style={{ paddingTop: '0px' }}>
+              <Accordion.Trigger className="AccordionTrigger">
+                <div className="TriggerLabel">
+                  <Vote size={18} color="#96b7ff" />
+                  <h4>{LIMITED_VOTING_UI ? "Round vote" : "Votes"}</h4>
+                </div>
+                <ChevronDown size={16} className="AccordionChevron" />
+              </Accordion.Trigger>
 
-            <Accordion.Content className="AccordionContent">
-              {LIMITED_VOTING_UI ? (
-                <>
-                  <p className="selected-text">
-                    Propose a vote to end the current round early.
+              <Accordion.Content className="AccordionContent">
+                {voteNotice ? (
+                  <p className={`${voteNotice.type === 'error' ? 'error-banner' : voteNotice.type === 'success' ? 'success-banner' : 'info-banner'} vote-notice-banner vote-notice-banner--${voteNoticePhase}`}>
+                    <span>{voteNotice.message}</span>
                   </p>
-                  <button 
+                ) : null}
+                {LIMITED_VOTING_UI ? (
+                  <>
+                    <p className="selected-text">
+                      Propose a vote to end the current round early.
+                    </p>
+                    <button
+                      type="button"
+                      style={{ width: '100%' }}
+                      onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })}
+                      disabled={!canCreateEndRoundVote}
+                    >
+                      {pendingAction === "vote:create"
+                        ? "Submitting..."
+                        : hasVoteInProgress
+                          ? "Vote in progress"
+                          : "Propose end round"}
+                    </button>
+
+                    {unresolvedVotes.length > 0 && (
+                      <div className="active-votes-section" style={{ marginTop: '15px' }}>
+                        {unresolvedVotes.map(renderActiveVote)}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="selected-text">
+                      Stuck in round 0? Propose <strong>end game</strong> — if everyone votes yes, the lobby ends.
+                      While running, the same vote closes after the deadline or when all players have cast.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        action("vote:create", {
+                          title: "End game",
+                          effect: { special: "__END_GAME__" }
+                        })
+                      }
+                      disabled={Boolean(pendingAction) || hasVoteInProgress || (activeLobby.status !== "zero-round" && activeLobby.status !== "running")}
+                    >
+                      Propose end game
+                    </button>
+
+                    <div className="vote-preset-grid" style={{ marginTop: '10px' }}>
+                      {VOTE_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          onClick={async () => {
+                            try {
+                              await action("vote:create", {
+                                lobbyId: activeLobby.id,
+                                by: address,
+                                title: preset.title,
+                                effect: preset.effect
+                              });
+                            } catch (e: any) {
+                              setError(mapGameError(e));
+                            }
+                          }}
+                          disabled={Boolean(pendingAction) || hasVoteInProgress || activeLobby.status !== "running"}
+                        >
+                          <Vote size={16} /> {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {unresolvedVotes.length > 0 && (
+                      <div className="active-votes-section" style={{ marginTop: '15px' }}>
+                        {unresolvedVotes.map(renderActiveVote)}
+                      </div>
+                    )}
+                  </>
+                )}
+              </Accordion.Content>
+            </Accordion.Item>
+          </Accordion.Root>
+
+          <Accordion.Root type="single" collapsible className="AccordionRoot">
+            <Accordion.Item value="options" className="action-group" style={{ paddingTop: '0px' }}>
+              <Accordion.Trigger className="AccordionTrigger">
+                <div className="TriggerLabel">
+                  <Settings size={18} color="#e0b0ff" />
+                  <h4>Game options</h4>
+                </div>
+                <ChevronDown size={16} className="AccordionChevron" />
+              </Accordion.Trigger>
+
+              <Accordion.Content className="AccordionContent">
+                <div className="game-options" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                  <button
                     type="button"
                     style={{ width: '100%' }}
-                    onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })}
-                    disabled={activeLobby.status !== "running"}
+                    onClick={() => setMapRenderer((current) => (current === "3d" ? "2d" : "3d"))}
+                    title="Switch map renderer"
                   >
-                    Propose end round
+                    Map view: {mapRenderer.toUpperCase()}
                   </button>
-                </>
-              ) : (
-                <>
-                  <p className="selected-text">
-                    Stuck in round 0? Propose <strong>end game</strong> — if everyone votes yes, the lobby ends. 
-                    While running, the same vote closes after the deadline or when all players have cast.
-                  </p>
+
+                  {/* Przycisk poddania się - wyświetlany tylko gdy gracz żyje i gra trwa */}
+                  {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
+                    <button
+                      type="button"
+                      className="danger"
+                      style={{ width: '100%' }}
+                      onClick={() => {
+                        if (!window.confirm("Concede this match? Others may win if you are not the last player standing.")) return;
+                        void action("game:concede", {});
+                      }}
+                      disabled={Boolean(pendingAction)}
+                    >
+                      <Flag size={16} /> Concede match
+                    </button>
+                  ) : null}
+
+                  {/* Temporarily hidden while LIMITED_VOTING_UI is enabled */}
+                  {!LIMITED_VOTING_UI && (
+                    <button
+                      type="button"
+                      style={{ width: '100%' }}
+                      onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })}
+                      disabled={!canCreateEndRoundVote}
+                    >
+                      Propose end round
+                    </button>
+                  )}
+
+                  {/* Przycisk rozłączenia portfela */}
+                  <button
+                    type="button"
+                    style={{ width: '100%', opacity: 0.8 }}
+                    onClick={() => navigate("/")}
+                  >
+                    Return to lobby
+                  </button>
 
                   <button
                     type="button"
-                    onClick={() =>
-                      action("vote:create", {
-                        title: "End game",
-                        effect: { special: "__END_GAME__" }
-                      })
-                    }
-                    disabled={Boolean(pendingAction) || (activeLobby.status !== "zero-round" && activeLobby.status !== "running")}
+                    style={{ width: '100%', opacity: 0.8 }}
+                    onClick={() => disconnect()}
                   >
-                    Propose end game
+                    Disconnect wallet
                   </button>
 
-                  <div className="vote-preset-grid" style={{ marginTop: '10px' }}>
-                    {VOTE_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        onClick={async () => {
-                          try {
-                            await action("vote:create", {
-                              lobbyId: activeLobby.id,
-                              by: address,
-                              title: preset.title,
-                              effect: preset.effect
-                            });
-                          } catch (e: any) {
-                            setError(mapGameError(e));
-                          }
-                        }}
-                      >
-                        <Vote size={16} /> {preset.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {activeLobby.globalVotes && activeLobby.globalVotes.length > 0 && (
-                    <div className="active-votes-section" style={{ marginTop: '15px' }}>
-                      {activeLobby.globalVotes
-                        .filter((vote: { resolved?: boolean }) => !vote.resolved)
-                        .slice(0, 8)
-                        .map((vote: any) => (
-                          <div key={vote.id} className="vote-item" style={{ borderTop: '1px solid #333', padding: '10px 0' }}>
-                            <p><strong>{vote.title}</strong></p>
-                            <p className="selected-text">
-                              {vote.effectKey === "__END_ROUND__"
-                                ? "End current round (unanimous yes, no “no” votes)"
-                                : vote.effectKey === "__END_GAME__"
-                                  ? "End the match"
-                                  : vote.effectKey}
-                            </p>
-                            <p className="selected-text">Closes after round {vote.closesAtRound}</p>
-                            <p className="selected-text">
-                              Votes: yes {vote.yesVotes} / no {vote.noVotes}
-                            </p>
-                            <div className="vote-buttons">
-                              <button
-                                type="button"
-                                onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: true })}
-                                disabled={Boolean(pendingAction)}
-                              >
-                                Yes
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => action("vote:cast", { lobbyId: activeLobby.id, voteId: vote.id, by: address, support: false })}
-                                disabled={Boolean(pendingAction)}
-                              >
-                                No
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                  {activeMapConfig ? (
+                    <div className="game-options-map-meta">
+                      <span>{`Map radius = ${activeMapConfig.radius}`}</span>
+                      <span>{`Seed: ${activeMapConfig.seed.slice(0, 10)}...`}</span>
                     </div>
-                  )}
-                </>
-              )}
-            </Accordion.Content>
-          </Accordion.Item>
-        </Accordion.Root>
+                  ) : null}
 
-        <Accordion.Root type="single" collapsible className="AccordionRoot">
-                <Accordion.Item value="options" className="action-group" style={{ paddingTop: '0px' }}>
-        <Accordion.Trigger className="AccordionTrigger">
-          <div className="TriggerLabel">
-            <Settings size={18} color="#e0b0ff" />
-            <h4>Game options</h4>
-          </div>
-          <ChevronDown size={16} className="AccordionChevron" />
-        </Accordion.Trigger>
-
-        <Accordion.Content className="AccordionContent">
-          <div className="game-options" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-            <button
-              type="button"
-              style={{ width: '100%' }}
-              onClick={() => setMapRenderer((current) => (current === "3d" ? "2d" : "3d"))}
-              title="Switch map renderer"
-            >
-              Map view: {mapRenderer.toUpperCase()}
-            </button>
-            
-            {/* Przycisk poddania się - wyświetlany tylko gdy gracz żyje i gra trwa */}
-            {address && activeLobby.me?.alive !== false && activeLobby.status === "running" ? (
-              <button
-                type="button"
-                className="danger"
-                style={{ width: '100%' }}
-                onClick={() => {
-                  if (!window.confirm("Concede this match? Others may win if you are not the last player standing.")) return;
-                  void action("game:concede", {});
-                }}
-                disabled={Boolean(pendingAction)}
-              >
-                <Flag size={16} /> Concede match
-              </button>
-            ) : null}
-
-            {/* Temporarily hidden while LIMITED_VOTING_UI is enabled */}
-            {!LIMITED_VOTING_UI && (
-              <button 
-                type="button"
-                style={{ width: '100%' }}
-                onClick={() => action("vote:create", { title: "End round early", effect: { special: "__END_ROUND__" } })} 
-                disabled={activeLobby.status !== "running"}
-              >
-                Propose end round
-              </button>
-            )}
-
-            {/* Przycisk rozłączenia portfela */}
-            <button 
-              type="button"
-              style={{ width: '100%', opacity: 0.8 }}
-              onClick={() => navigate("/")}
-            >
-              Return to lobby
-            </button>
-
-            <button 
-              type="button"
-              style={{ width: '100%', opacity: 0.8 }}
-              onClick={() => disconnect()}
-            >
-              Disconnect wallet
-            </button>
-
-            {activeMapConfig ? (
-              <div className="game-options-map-meta">
-                <span>{`Map radius = ${activeMapConfig.radius}`}</span>
-                <span>{`Seed: ${activeMapConfig.seed.slice(0, 10)}...`}</span>
-              </div>
-            ) : null}
-
-          </div>
-        </Accordion.Content>
-      </Accordion.Item>
+                </div>
+              </Accordion.Content>
+            </Accordion.Item>
           </Accordion.Root>
 
-        {/* <div className="log-list">
+          {/* <div className="log-list">
           {activeLobby.logs.slice(0, 8).map((log) => (
             <p key={log.id}>{new Date(log.timestamp).toLocaleTimeString()} • {log.text}</p>
           ))} 
         </div>*/}
-      </aside>
+        </aside>
       ) : null}
-      <IkoPhone 
-      isOpen={isIkoOpen}
-      onClose={() => setIsIkoOpen(false)}
-      highContrastEnabled={highContrast.enabled}
-      bankSellKind={bankSellKind}
-      setBankSellKind={setBankSellKind}
-      bankBuyKind={bankBuyKind}
-      setBankBuyKind={setBankBuyKind}
-      bankBulkLots={bankBulkLots}
-      setBankBulkLots={setBankBulkLots}
-      bankTradeBulkMaxLots={bankTradeBulkMaxLots}
-      tradeEnergyCost={tradeEnergyCost}
-      openTradeOffersCount={openTradeOffersCount}
-      tradeOfferDraft={tradeOfferDraft}
-      setTradeOfferDraft={setTradeOfferDraft}
-      tradeRequestDraft={tradeRequestDraft}
-      setTradeRequestDraft={setTradeRequestDraft}
-      onTradeExecute={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
-      onBarterCreate={() => action("barter:create", { to: ZERO_ADDRESS, offer: { ...tradeOfferDraft }, request: { ...tradeRequestDraft } })}
-      onOpenOffersList={() => setTradeOffersModalOpen(true)}
-      assistantMessages={assistantMessages}
-      assistantPrompt={assistantPrompt}
-      setAssistantPrompt={setAssistantPrompt}
-      assistantSending={assistantSending}
-      assistantError={assistantError}
-      onSendAssistantPrompt={() => void onSendAssistantPrompt()}
-      playerResources={projectedMe?.resources ?? { food: 0, wood: 0, stone: 0, ore: 0, energy: 0 }}
-      tradeSuccessNotification={ikoTradeSuccessNotification}
-      tradeSuccessMessage={ikoTradeSuccessMessage}
-    />
+      <IkoPhone
+        isOpen={isIkoOpen}
+        onClose={() => setIsIkoOpen(false)}
+        highContrastEnabled={highContrast.enabled}
+        bankSellKind={bankSellKind}
+        setBankSellKind={setBankSellKind}
+        bankBuyKind={bankBuyKind}
+        setBankBuyKind={setBankBuyKind}
+        bankBulkLots={bankBulkLots}
+        setBankBulkLots={setBankBulkLots}
+        bankTradeBulkMaxLots={bankTradeBulkMaxLots}
+        tradeEnergyCost={tradeEnergyCost}
+        openTradeOffersCount={openTradeOffersCount}
+        tradeOfferDraft={tradeOfferDraft}
+        setTradeOfferDraft={setTradeOfferDraft}
+        tradeRequestDraft={tradeRequestDraft}
+        setTradeRequestDraft={setTradeRequestDraft}
+        onTradeExecute={() => action("game:bank-trade", { sellKind: bankSellKind, buyKind: bankBuyKind, times: bankBulkLots })}
+        onBarterCreate={() => action("barter:create", { to: ZERO_ADDRESS, offer: { ...tradeOfferDraft }, request: { ...tradeRequestDraft } })}
+        onOpenOffersList={() => setTradeOffersModalOpen(true)}
+        assistantMessages={assistantMessages}
+        assistantPrompt={assistantPrompt}
+        setAssistantPrompt={setAssistantPrompt}
+        assistantSending={assistantSending}
+        assistantError={assistantError}
+        onSendAssistantPrompt={() => void onSendAssistantPrompt()}
+        playerResources={projectedMe?.resources ?? { food: 0, wood: 0, stone: 0, ore: 0, energy: 0 }}
+        tradeSuccessNotification={ikoTradeSuccessNotification}
+        tradeSuccessMessage={ikoTradeSuccessMessage}
+      />
       {!isSpectator ? (
         <TradeOffersModal
           open={tradeOffersModalOpen}
@@ -2805,7 +3005,6 @@ function AppPage() {
         />
       ) : null}
       {highContrastToggleButton}
-      
     </div>
   );
 }

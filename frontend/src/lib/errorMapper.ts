@@ -123,6 +123,8 @@ export function mapGameError(error: any): string {
     { match: "not game master executor", message: "Only the Game Master can perform this action." },
     { match: "grant cap exceeded", message: "Game Master grant limit exceeded." },
     { match: "session ttl must be > 0", message: "Session TTL must be greater than 0." },
+    { match: "validatepaymasteruserop", message: "Transaction sponsor rejected this action. Please wait for pending actions to finish and try again." },
+    { match: "user operation rejected by paymaster", message: "Transaction sponsor rejected this action. Please wait for pending actions to finish and try again." },
 
     { match: "user rejected the request", message: "Transaction was rejected in your wallet." },
     { match: "user rejected", message: "Transaction was rejected in your wallet." },
