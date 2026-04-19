@@ -1063,6 +1063,34 @@ button.lobby-kick-btn.danger:disabled {
   font-size: 0.84rem;
 }
 
+.info-banner {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(86, 240, 255, 0.15);
+  border: 1px solid rgba(86, 240, 255, 0.4);
+  color: #e0faff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.84rem;
+}
+
+.success-banner {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(91, 255, 157, 0.15);
+  border: 1px solid rgba(91, 255, 157, 0.4);
+  color: #e0ffec;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.84rem;
+}
+
 .vote-notice-banner {
   margin: 0 0 0.65rem;
   transition: opacity 3s linear, transform 3s ease;

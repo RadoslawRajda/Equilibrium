@@ -250,7 +250,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: '900', color: colors.pkoBlue, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>SELL RESOURCES (X4)</span>
-                    <span style={{ fontSize: '9px', fontWeight: 'normal', color: '#666' }}>Have: {Math.floor((props.playerResources[props.bankSellKind] ?? 0) / 4)}</span>
+                    <span style={{ fontSize: '9px', fontWeight: 'normal', color: '#666' }}>Have: {Math.floor((props.playerResources[props.bankSellKind] ?? 0) / 1)}</span>
                   </label>
                   <CustomSelect value={props.bankSellKind} onSelect={props.setBankSellKind} type="sell" />
                 </div>
@@ -280,7 +280,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                           fontSize: '11px',
                           color: '#c92a2a'
                         }}>
-                          <strong>Not enough resources!</strong> Need {requiredAmount} {props.bankSellKind},you have {sellResourceAmount}
+                          <strong>Not enough resources!</strong>
                         </div>
                       )}
                       <button 

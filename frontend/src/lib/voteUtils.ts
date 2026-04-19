@@ -1,6 +1,6 @@
 import type { LobbyState } from "../types";
 
-const END_ROUND_CLOSE_ROUNDS_AHEAD = 999;
+export const END_ROUND_CLOSE_ROUNDS_AHEAD = 999;
 
 type EndRoundEligibilityInput = {
   status: LobbyState["status"];
