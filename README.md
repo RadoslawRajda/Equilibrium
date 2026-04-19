@@ -12,6 +12,12 @@ Equilibrium is a strategic resource game built as a fully decentralized Ethereum
 - Dawid Kąkol
 - Kamil Mulorz
 
+## 🏆 Bounty Winner
+
+We won the **AKMF bounty** at ETHSilesia 2026!
+
+<img src=".github/bountyWinner.jpg">
+
 ## Project Overview
 
 Equilibrium combines three worlds in one product:
