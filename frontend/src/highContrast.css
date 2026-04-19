@@ -1,0 +1,253 @@
+/* High contrast mode for low-vision accessibility.
+ * Applied when <body> has .high-contrast-mode.
+ */
+
+body.high-contrast-mode {
+  --hc-bg: #050505;
+  --hc-bg-soft: #0d0d0d;
+  --hc-surface: #121212;
+  --hc-surface-alt: #1a1a1a;
+  --hc-text: #ffe600;
+  --hc-muted: #ffe600;
+  --hc-border: #ffe600;
+  --hc-focus: #ffffff;
+  --hc-link: #ffe600;
+
+  background: var(--hc-bg) !important;
+  color: var(--hc-text) !important;
+}
+
+body.high-contrast-mode *,
+body.high-contrast-mode *::before,
+body.high-contrast-mode *::after {
+  color: var(--hc-text) !important;
+}
+
+body.high-contrast-mode,
+body.high-contrast-mode #root,
+body.high-contrast-mode .connect-screen,
+body.high-contrast-mode .lobby-shell,
+body.high-contrast-mode .game-shell,
+body.high-contrast-mode .map-main,
+body.high-contrast-mode .map-stage {
+  background: var(--hc-bg) !important;
+  color: var(--hc-text) !important;
+}
+
+body.high-contrast-mode a:not(.policy-tiles__tile) {
+  color: var(--hc-link) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+
+body.high-contrast-mode :focus-visible {
+  outline: 3px solid var(--hc-focus) !important;
+  outline-offset: 3px !important;
+}
+
+body.high-contrast-mode button,
+body.high-contrast-mode .ghost-button,
+body.high-contrast-mode .danger,
+body.high-contrast-mode .primary {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+  border: 2px solid var(--hc-border) !important;
+  box-shadow: none !important;
+}
+
+body.high-contrast-mode button:hover:not(:disabled) {
+  background: var(--hc-surface-alt) !important;
+}
+
+body.high-contrast-mode button:disabled {
+  opacity: 0.55 !important;
+}
+
+body.high-contrast-mode input,
+body.high-contrast-mode select,
+body.high-contrast-mode textarea,
+body.high-contrast-mode .action-group input,
+body.high-contrast-mode .assistant-chat-input,
+body.high-contrast-mode .trade-modal-search input {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+  border: 2px solid var(--hc-border) !important;
+}
+
+body.high-contrast-mode .trade-modal-search input {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* App shell surfaces */
+body.high-contrast-mode .panel,
+body.high-contrast-mode .lobby-list,
+body.high-contrast-mode .status-card,
+body.high-contrast-mode .effects-list,
+body.high-contrast-mode .action-group,
+body.high-contrast-mode .log-list,
+body.high-contrast-mode .assistant-chat-message,
+body.high-contrast-mode .resource-item,
+body.high-contrast-mode .lobby-card,
+body.high-contrast-mode .leaderboard-empty,
+body.high-contrast-mode .wallet-strip {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+  border-color: var(--hc-border) !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+/* Game background and map canvas frame */
+body.high-contrast-mode .map-wrap {
+  background:
+    linear-gradient(180deg, #050505 0%, #090909 48%, #111111 100%) !important;
+  border-color: var(--hc-border) !important;
+}
+
+body.high-contrast-mode .map-wrap canvas,
+body.high-contrast-mode .map-wrap svg {
+  filter: none !important;
+}
+
+body.high-contrast-mode .map-wrap::before,
+body.high-contrast-mode .map-wrap::after {
+  background: none !important;
+  box-shadow: none !important;
+  border-color: var(--hc-border) !important;
+}
+
+/* Header / HUD */
+body.high-contrast-mode .top-hud,
+body.high-contrast-mode .top-hud-chip,
+body.high-contrast-mode .top-hud-chip--muted,
+body.high-contrast-mode .top-hud-chip--spectator,
+body.high-contrast-mode .round-timer {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+  border-color: var(--hc-border) !important;
+  box-shadow: none !important;
+}
+
+body.high-contrast-mode .top-hud-brand,
+body.high-contrast-mode .top-hud-round-label,
+body.high-contrast-mode .selected-text,
+body.high-contrast-mode .player-row p,
+body.high-contrast-mode .resource-item p,
+body.high-contrast-mode .lobby-card-address,
+body.high-contrast-mode .game-options-map-meta,
+body.high-contrast-mode .spectator-meta,
+body.high-contrast-mode .spectator-hint,
+body.high-contrast-mode .leaderboard-count {
+  color: var(--hc-muted) !important;
+}
+
+/* Right panel and side menus */
+body.high-contrast-mode .right-panel,
+body.high-contrast-mode .spectator-sidebar,
+body.high-contrast-mode .AccordionRoot,
+body.high-contrast-mode .AccordionItem,
+body.high-contrast-mode .AccordionTrigger,
+body.high-contrast-mode .AccordionContent,
+body.high-contrast-mode .game-options,
+body.high-contrast-mode .hex-context-menu,
+body.high-contrast-mode .trade-modal-panel,
+body.high-contrast-mode .modal-panel,
+body.high-contrast-mode .modal-header,
+body.high-contrast-mode .trade-modal-search {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+  border-color: var(--hc-border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body.high-contrast-mode .hex-context-menu__actions button,
+body.high-contrast-mode .hex-context-menu__action-btn,
+body.high-contrast-mode .trade-modal-search,
+body.high-contrast-mode .vote-item {
+  border-color: var(--hc-border) !important;
+}
+
+/* Menus and dropdown options */
+body.high-contrast-mode select {
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3A%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3A%2214%22%20height%3A%2214%22%20viewBox%3A%220%200%2024%2024%22%20fill%3A%22none%22%20stroke%3A%22%23ffe600%22%20stroke-width%3A%222.5%22%20stroke-linecap%3A%22round%22%20stroke-linejoin%3A%22round%22%3E%3Cpolyline%20points%3A%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E") !important;
+}
+
+body.high-contrast-mode input::placeholder,
+body.high-contrast-mode textarea::placeholder {
+  color: #ffe600 !important;
+  opacity: 0.85;
+}
+
+body.high-contrast-mode select option {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+}
+
+/* Status and errors */
+body.high-contrast-mode .error-banner,
+body.high-contrast-mode .map-error-banner {
+  background: #240000 !important;
+  border: 2px solid #ffe600 !important;
+  color: #ffe600 !important;
+  box-shadow: none !important;
+}
+
+/* Policy / side tiles */
+body.high-contrast-mode .policy-tiles__tile {
+  background: var(--hc-surface) !important;
+  border: 2px solid var(--hc-border) !important;
+}
+
+body.high-contrast-mode .policy-tiles__tile:hover {
+  background: var(--hc-surface-alt) !important;
+}
+
+/* Icons */
+body.high-contrast-mode .policy-tiles__icon,
+body.high-contrast-mode .hc-icon,
+body.high-contrast-mode .AccordionChevron,
+body.high-contrast-mode .map-resource-item svg,
+body.high-contrast-mode .resource-item svg {
+  color: var(--hc-text) !important;
+  stroke: var(--hc-text) !important;
+}
+
+body.high-contrast-mode .high-contrast-fab {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+  border: 2px solid var(--hc-border) !important;
+  box-shadow: none !important;
+}
+
+body.high-contrast-mode .high-contrast-fab.is-active {
+  background: var(--hc-surface-alt) !important;
+}
+
+body.high-contrast-mode .iko-scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hc-border) var(--hc-bg-soft) !important;
+}
+
+body.high-contrast-mode .iko-scroll-area::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body.high-contrast-mode .iko-scroll-area::-webkit-scrollbar-track {
+  background: var(--hc-bg-soft) !important;
+  border-radius: 999px;
+}
+
+body.high-contrast-mode .iko-scroll-area::-webkit-scrollbar-thumb {
+  background: var(--hc-border) !important;
+  border-radius: 999px;
+  border: 2px solid var(--hc-bg-soft);
+}
+
+body.high-contrast-mode .iko-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: var(--hc-text) !important;
+}
+

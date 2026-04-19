@@ -9,6 +9,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Contrast,
   Gem,
   Factory,
   Flag,
@@ -39,6 +40,7 @@ import { SpectatorPlayersPanel } from "./components/SpectatorPlayersPanel";
 import { SpectatorTradeFeed } from "./components/SpectatorTradeFeed";
 import { SpectatorOnChainTrades } from "./components/SpectatorOnChainTrades";
 import { TradeOffersModal } from "./components/TradeOffersModal";
+import { LeaderboardPage } from "./components/LeaderboardPage";
 import { localGanache } from "./lib/wallet";
 import {
   ActionCosts,
@@ -66,6 +68,8 @@ import { colorFromAddress } from "./utils/helpers/converters";
 import * as Select from '@radix-ui/react-select';
 import * as Accordion from '@radix-ui/react-accordion';
 import { IkoPhone } from "./components/IkoPhone";
+import { useHighContrast } from "./hooks/useHighContrast";
+import { PolicyTiles } from "./components/PolicyTiles";
 type ContractMeta = {
   contracts: {
     EntryPoint?: {
@@ -93,6 +97,10 @@ type ContractMeta = {
       abi: any[];
     };
     LobbySessionPaymaster?: {
+      address: `0x${string}`;
+      abi: any[];
+    };
+    ExperienceStats?: {
       address: `0x${string}`;
       abi: any[];
     };
@@ -218,6 +226,7 @@ function pendingSponsorShareForRosterWei(args: {
 function AppPage() {
   const navigate = useNavigate();
   const { lobbyId } = useParams<{ lobbyId: string }>();
+  const highContrast = useHighContrast();
   const [lobbies, setLobbies] = useState<LobbySummary[]>([]);
   const [chainDeployHint, setChainDeployHint] = useState<string | null>(null);
   const [activeLobby, setActiveLobby] = useState<LobbyState | null>(null);
@@ -299,6 +308,7 @@ function AppPage() {
   const [assistantError, setAssistantError] = useState<string | null>(null);
   const [ikoTradeSuccessNotification, setIkoTradeSuccessNotification] = useState(false);
   const [ikoTradeSuccessMessage, setIkoTradeSuccessMessage] = useState("");
+  const [playerXP, setPlayerXP] = useState<{ experiencePoints: number; gamesWon: number; gamesLeft: number } | null>(null);
 
   // Auto-hide trade success notification
   useEffect(() => {
@@ -425,6 +435,51 @@ function AppPage() {
       cancelled = true;
     };
   }, [publicClient, gameCoreAddress, gameCoreAbi, activeLobby?.id]);
+
+  // Fetch player XP when game ends
+  useEffect(() => {
+    if (activeLobby?.status !== "ended" || !address || !publicClient) {
+      setPlayerXP(null);
+      return;
+    }
+    
+    let cancelled = false;
+    (async () => {
+      try {
+        const experienceStatsAddress = contracts?.contracts?.ExperienceStats?.address as `0x${string}` | undefined;
+        const experienceStatsAbi = contracts?.contracts?.ExperienceStats?.abi;
+        
+        if (!experienceStatsAddress || !experienceStatsAbi) {
+          setPlayerXP(null);
+          return;
+        }
+
+        const result = await publicClient.readContract({
+          address: experienceStatsAddress,
+          abi: experienceStatsAbi,
+          functionName: "getPlayerStats",
+          args: [address as `0x${string}`]
+        } as any);
+
+        if (!cancelled && result) {
+          const stats = result as any;
+          setPlayerXP({
+            experiencePoints: Number(stats.experiencePoints ?? 0),
+            gamesWon: Number(stats.gamesWon ?? 0),
+            gamesLeft: Number(stats.gamesLeft ?? 0)
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setPlayerXP(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLobby?.status, address, publicClient, contracts]);
 
   const lobbyRepository = useMemo(
     () =>
@@ -1700,6 +1755,21 @@ function AppPage() {
           args: [lobbyId]
         });
         await publicClient?.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+
+        if (lobbyManagerAddress && lobbyManagerAbi) {
+          try {
+            const syncHash = await sendSessionTransaction({
+              lobbyId: activeLobby.id,
+              contractAddress: lobbyManagerAddress,
+              contractAbi: lobbyManagerAbi,
+              functionName: "syncConcedeExitPenalty",
+              args: [lobbyId]
+            });
+            await publicClient?.waitForTransactionReceipt({ hash: syncHash as `0x${string}` });
+          } catch {
+            // Concede already succeeded; XP sync can be retried later.
+          }
+        }
       } else if (event === "barter:create") {
         setPendingAction("barter:create");
         const taker = (payload.to as `0x${string}` | undefined) ?? ZERO_ADDRESS;
@@ -2087,84 +2157,113 @@ function AppPage() {
   };
 
   const walletConnectConnector = connectors.find((c) => c.id === "injected") || connectors[0];
+  const mapViewKey = mapRenderer === "3d" ? `3d-${highContrast.enabled ? "hc" : "normal"}` : "2d";
+
+  const highContrastToggleButton = (
+    <button
+      type="button"
+      className={`high-contrast-fab${highContrast.enabled ? " is-active" : ""}`}
+      onClick={() => highContrast.toggle()}
+      title={`High Contrast: ${highContrast.enabled ? "ON" : "OFF"}`}
+      aria-label={`High Contrast: ${highContrast.enabled ? "ON" : "OFF"}`}
+      aria-pressed={highContrast.enabled}
+    >
+      <Contrast className="hc-icon" size={16} aria-hidden />
+      <span>High Contrast {highContrast.enabled ? "ON" : "OFF"}</span>
+    </button>
+  );
 
   if (!isConnected) {
     return (
-      <div className="connect-screen">
-        <h1>Equilibrium PoC</h1>
-        <p>Connect your wallet to enter the lobby flow.</p>
-        <div className="connect-buttons">
-          <button onClick={() => walletConnectConnector && connect({ connector: walletConnectConnector })}>
-            Connect Wallet
-          </button>
+      <>
+        <div className="connect-screen">
+          <h1>Equilibrium PoC</h1>
+          <p>Connect your wallet to enter the lobby flow.</p>
+          <div className="connect-buttons">
+            <button onClick={() => walletConnectConnector && connect({ connector: walletConnectConnector })}>
+              Connect Wallet
+            </button>
+          </div>
         </div>
-      </div>
+        {highContrastToggleButton}
+      </>
     );
   }
 
   if (lobbyId && !activeLobby) {
     return (
-      <div className="connect-screen">
-        <h1>Loading game...</h1>
-        <p>Reading lobby state from blockchain.</p>
-        {chainDeployHint ? <p className="error-banner">{chainDeployHint}</p> : null}
-        <button type="button" onClick={() => navigate("/")}>
-          Back to lobbies
-        </button>
-      </div>
+      <>
+        <div className="connect-screen">
+          <h1>Loading game...</h1>
+          <p>Reading lobby state from blockchain.</p>
+          {chainDeployHint ? <p className="error-banner">{chainDeployHint}</p> : null}
+          <button type="button" onClick={() => navigate("/")}>
+            Back to lobbies
+          </button>
+        </div>
+        {highContrastToggleButton}
+      </>
     );
   }
 
   if (!activeLobby) {
     return (
-      <Lobby
-        address={address}
-        lobbies={lobbies}
-        creating={isCreatingLobby}
-        onCreate={onCreateLobby}
-        onOpen={onOpenLobby}
-        onDisconnect={() => disconnect()}
-        deployHint={chainDeployHint}
-        ticketPriceLabel={ticketPriceLabel}
-        claimableWei={lmWithdrawableWei}
-        onClaimLobbyBalance={() => void onWithdrawLobbyBalance()}
-        claimPending={pendingAction === "lobby:withdraw"}
-      />
+      <>
+        <Lobby
+          address={address}
+          lobbies={lobbies}
+          creating={isCreatingLobby}
+          onCreate={onCreateLobby}
+          onOpen={onOpenLobby}
+          onDisconnect={() => disconnect()}
+          onOpenLeaderboard={() => navigate("/leaderboard")}
+          deployHint={chainDeployHint}
+          ticketPriceLabel={ticketPriceLabel}
+          claimableWei={lmWithdrawableWei}
+          onClaimLobbyBalance={() => void onWithdrawLobbyBalance()}
+          claimPending={pendingAction === "lobby:withdraw"}
+        />
+        {highContrastToggleButton}
+      </>
     );
   }
 
   if (activeLobby.status === "cancelled") {
     const claimable = lmWithdrawableWei != null && lmWithdrawableWei > 0n;
     return (
-      <div className="connect-screen">
-        <h1>Lobby cancelled</h1>
-        <p>
-          This lobby was cancelled. Claim first splits any remaining sponsor pool into per-player balances on the lobby
-          contract, then withdraws to your wallet.
-        </p>
-        {lmWithdrawableWei != null ? (
+      <>
+        <div className="connect-screen">
+          <h1>Lobby cancelled</h1>
           <p>
-            <strong>Claimable on contract</strong>: {formatEther(lmWithdrawableWei)} ETH
+            This lobby was cancelled. Claim first splits any remaining sponsor pool into per-player balances on the lobby
+            contract, then withdraws to your wallet.
           </p>
-        ) : (
-          <p>Reading your balance…</p>
-        )}
-        {claimable ? (
-          <button
-            type="button"
-            onClick={() => void onWithdrawLobbyBalance()}
-            disabled={pendingAction === "lobby:withdraw"}
-          >
-            {pendingAction === "lobby:withdraw" ? "Confirming…" : "Claim ETH to wallet"}
+          {lmWithdrawableWei != null ? (
+            <p>
+              <strong>Claimable on contract</strong>: {formatEther(lmWithdrawableWei)} ETH
+            </p>
+          ) : (
+            <p>Reading your balance…</p>
+          )}
+          {claimable ? (
+            <button
+              type="button"
+              onClick={() => void onWithdrawLobbyBalance()}
+              disabled={pendingAction === "lobby:withdraw"}
+            >
+              {pendingAction === "lobby:withdraw" ? "Confirming…" : "Claim ETH to wallet"}
+            </button>
+          ) : lmWithdrawableWei != null && lmWithdrawableWei === 0n ? (
+            <p className="selected-text">No balance left to claim for this wallet.</p>
+          ) : null}
+          {error ? <p className="error-banner">{error}</p> : null}
+          <PolicyTiles />
+          <button type="button" onClick={() => navigate("/")}>
+            Back to lobbies
           </button>
-        ) : lmWithdrawableWei != null && lmWithdrawableWei === 0n ? (
-          <p className="selected-text">No balance left to claim for this wallet.</p>
-        ) : null}
-        {error ? <p className="error-banner">{error}</p> : null}
-        <button type="button" onClick={() => navigate("/")}>
-          Back to lobbies
-        </button>
-      </div>
+        </div>
+        {highContrastToggleButton}
+      </>
     );
   }
 
@@ -2173,6 +2272,7 @@ function AppPage() {
     const declared = Boolean(activeLobby.declaredWinnerAddress);
     const lmActive = activeLobby.lobbyManagerStatus === 1;
     return (
+      <>
       <div className="connect-screen">
         <h1>Match over</h1>
         <p className="selected-text" style={{ maxWidth: "36rem" }}>
@@ -2211,6 +2311,16 @@ function AppPage() {
             <strong>You are recorded as the winner on-chain.</strong>
           </p>
         ) : null}
+        {playerXP ? (
+          <div style={{ padding: "1rem", backgroundColor: "rgba(10, 17, 44, 0.4)", borderRadius: "6px", margin: "1rem 0" }}>
+            <p style={{ margin: "0.5rem 0", fontSize: "0.95rem" }}>
+              <strong>Experience Points</strong>: +{playerXP.experiencePoints}
+            </p>
+            <p style={{ margin: "0.5rem 0", fontSize: "0.85rem", opacity: 0.85 }}>
+              Total XP: {playerXP.experiencePoints} | Wins: {playerXP.gamesWon} | Abandoned: {playerXP.gamesLeft}
+            </p>
+          </div>
+        ) : null}
         {lmWithdrawableWei != null ? (
           <p>
             <strong>Your claimable balance on the lobby contract</strong>: {formatEther(lmWithdrawableWei)} ETH
@@ -2232,44 +2342,53 @@ function AppPage() {
             call <code>completeGame</code>.
           </p>
         ) : null}
+        <p className="selected-text" style={{ maxWidth: "36rem" }}>
+          If you have any questions or issues, please contact us by pressing the contact button below.
+        </p>
         {error ? <p className="error-banner">{error}</p> : null}
+        <PolicyTiles />
         <button type="button" onClick={() => navigate("/")}>
           Back to lobbies
         </button>
       </div>
+      {highContrastToggleButton}
+      </>
     );
   }
 
   if (activeLobby.status === "waiting") {
     return (
-      <LobbyRoom
-        address={address}
-        lobby={activeLobby}
-        isHost={isLobbyHost}
-        hasTicket={hasLobbyTicket}
-        canLeaveLobby={Boolean(!isLobbyHost && hasLobbyTicket)}
-        onLeaveLobby={() => void onLeaveLobby()}
-        leaveLobbyPending={pendingAction === "lobby:leave"}
-        canStart={canStartLobby}
-        starting={startingLobby}
-        ticketPriceLabel={ticketPriceLabel}
-        onBuyTicket={onBuyTicket}
-        onStart={onStartLobby}
-        onCancel={onCancelLobby}
-        onBack={() => navigate("/")}
-        onDisconnect={() => disconnect()}
-        actionError={error}
-        agentAddresses={agentAddressSet}
-        registeredAgents={registryAgents}
-        chainRegistryAgentsError={chainRegistryAgentsError}
-        inviteUses4337={useAaForLobbyFollowups}
-        onInviteAgent={onInviteAgent}
-        inviteAgentPending={pendingAction === "lobby:invite-agent"}
-        onKickPlayer={isLobbyHost ? (addr) => void onKickHostOpenLobby(addr) : undefined}
-        kickPlayerPendingAddress={
-          pendingAction?.startsWith("lobby:kick:") ? pendingAction.slice("lobby:kick:".length) : null
-        }
-      />
+      <>
+        <LobbyRoom
+          address={address}
+          lobby={activeLobby}
+          isHost={isLobbyHost}
+          hasTicket={hasLobbyTicket}
+          canLeaveLobby={Boolean(!isLobbyHost && hasLobbyTicket)}
+          onLeaveLobby={() => void onLeaveLobby()}
+          leaveLobbyPending={pendingAction === "lobby:leave"}
+          canStart={canStartLobby}
+          starting={startingLobby}
+          ticketPriceLabel={ticketPriceLabel}
+          onBuyTicket={onBuyTicket}
+          onStart={onStartLobby}
+          onCancel={onCancelLobby}
+          onBack={() => navigate("/")}
+          onDisconnect={() => disconnect()}
+          actionError={error}
+          agentAddresses={agentAddressSet}
+          registeredAgents={registryAgents}
+          chainRegistryAgentsError={chainRegistryAgentsError}
+          inviteUses4337={useAaForLobbyFollowups}
+          onInviteAgent={onInviteAgent}
+          inviteAgentPending={pendingAction === "lobby:invite-agent"}
+          onKickPlayer={isLobbyHost ? (addr) => void onKickHostOpenLobby(addr) : undefined}
+          kickPlayerPendingAddress={
+            pendingAction?.startsWith("lobby:kick:") ? pendingAction.slice("lobby:kick:".length) : null
+          }
+        />
+        {highContrastToggleButton}
+      </>
     );
   }
 
@@ -2471,10 +2590,12 @@ function AppPage() {
           ) : null}
 
           <ActiveMapComponent
+            key={mapViewKey}
             hexes={activeLobby.mapHexes}
             myAddress={isSpectator ? undefined : address}
             selectedHex={selectedHex}
             earthquakeTargets={activeLobby.pendingEarthquake?.targets || []}
+            highContrastEnabled={highContrast.enabled}
             contextMenuActions={isSpectator ? undefined : hexContextMenuActions}
             onBackgroundClick={() => {
               setSelectionClearedByUser(true);
@@ -2837,6 +2958,7 @@ function AppPage() {
       <IkoPhone
         isOpen={isIkoOpen}
         onClose={() => setIsIkoOpen(false)}
+        highContrastEnabled={highContrast.enabled}
         bankSellKind={bankSellKind}
         setBankSellKind={setBankSellKind}
         bankBuyKind={bankBuyKind}
@@ -2882,7 +3004,7 @@ function AppPage() {
           }}
         />
       ) : null}
-
+      {highContrastToggleButton}
     </div>
   );
 }
@@ -2891,6 +3013,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<AppPage />} />
+      <Route path="/leaderboard" element={<LeaderboardPage />} />
       <Route path="/game/:lobbyId" element={<AppPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

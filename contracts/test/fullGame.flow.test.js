@@ -45,30 +45,20 @@ async function mineSeconds(seconds) {
 
 const ZERO_RES = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
 
-/** Matches `GameConfig.gameMasterMaxGrantPerResource` — GM cannot grant more than this per stat in one call. */
-const GM_GRANT_CAP = 24n;
-
 /**
- * Reach victory goods on-chain: before each craft, top up basics + energy up to the GM grant cap so tests survive
- * higher `craftAlloyCost` / `craftAlloyEnergyCost` or a larger `victoryGoodsThreshold` without hand-tuned numbers.
+ * Reach victory goods on-chain by funding the harness directly, then craft until the victory threshold is reached.
  */
 async function craftAlloyUntilVictory(gameCore, host, lobbyId) {
-  await gameCore.connect(host).setLobbyGameMaster(lobbyId, host.address);
+  await gameCore.debugSetPlayerResources(lobbyId, host.address, {
+    food: 100n,
+    wood: 100n,
+    stone: 100n,
+    ore: 100n,
+    energy: 100n
+  });
+
   const threshold = Number(await gameCore.getVictoryGoodsThreshold());
   for (let i = 0; i < threshold; i += 1) {
-    await gameCore.connect(host).gameMasterAdjustResources(
-      lobbyId,
-      host.address,
-      {
-        food: GM_GRANT_CAP,
-        wood: GM_GRANT_CAP,
-        stone: GM_GRANT_CAP,
-        ore: GM_GRANT_CAP,
-        energy: GM_GRANT_CAP
-      },
-      ZERO_RES,
-      `test GM top-up before craft ${i + 1}/${threshold}`
-    );
     await gameCore.connect(host).craftAlloy(lobbyId);
   }
 }

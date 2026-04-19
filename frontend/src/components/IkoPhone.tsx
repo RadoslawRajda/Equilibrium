@@ -15,6 +15,7 @@ type AssistantChatMessage = {
 interface IkoPhoneProps {
   isOpen: boolean;
   onClose: () => void;
+  highContrastEnabled?: boolean;
   bankSellKind: string;
   setBankSellKind: (val: string) => void;
   bankBuyKind: string;
@@ -66,13 +67,23 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
 
   if (!props.isOpen) return null;
 
+  const isHC = Boolean(props.highContrastEnabled);
+
   const colors = {
-    pkoBlue: '#002855',
+    pkoBlue: isHC ? '#ffe600' : '#002855',
     pkoRed: '#e60000',
-    bgLight: '#F2F4F7',
-    border: '#e0e4e8',
-    inputBg: '#f7f7f7',
-    inputText: '#5f666d'
+    bgLight: isHC ? '#111111' : '#F2F4F7',
+    border: isHC ? '#5f5f5f' : '#e0e4e8',
+    inputBg: isHC ? '#1b1b1b' : '#f7f7f7',
+    inputText: isHC ? '#ffe600' : '#5f666d',
+    surface: isHC ? '#121212' : '#ffffff',
+    surfaceSoft: isHC ? '#1a1a1a' : '#f0f2f5',
+    statusBg: isHC ? '#101010' : '#ffffff',
+    statusText: isHC ? '#ffe600' : '#000000',
+    buttonPrimary: isHC ? '#5f5f5f' : '#002855',
+    buttonSecondary: isHC ? '#4d4d4d' : '#f0f2f5',
+    buttonDisabled: isHC ? '#363636' : '#cccccc',
+    buttonText: isHC ? '#ffe600' : '#ffffff'
   };
 
   const formatTime = (date: Date) => {
@@ -82,7 +93,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
   const commonInputStyle = {
     background: colors.inputBg,
     color: colors.inputText,
-    border: '1px solid #e0e4e8',
+    border: `1px solid ${colors.border}`,
     borderRadius: '10px',
     padding: '12px',
     fontSize: '13px',
@@ -111,7 +122,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
         {isThisOpen && (
           <div style={{ 
             position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: '4px',
-            background: '#fff', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            background: colors.surface, borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
             zIndex: 100, overflow: 'hidden', border: `1px solid ${colors.border}`
           }}>
             {RESOURCE_MAP.map((res) => (
@@ -123,7 +134,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                 style={{
                   display: 'flex', alignItems: 'center', padding: '12px 16px',
                   fontSize: '12px', fontWeight: 'bold', cursor: 'pointer',
-                  background: (hoveredItem === res.label || value === res.label) ? '#f0f4f8' : 'transparent',
+                  background: (hoveredItem === res.label || value === res.label) ? colors.surfaceSoft : 'transparent',
                   color: (hoveredItem === res.label || value === res.label) ? colors.pkoBlue : colors.inputText
                 }}
               >
@@ -138,17 +149,17 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(10px)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', background: isHC ? 'rgba(0, 0, 0, 0.88)' : 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(10px)' }}>
       <div style={{ position: 'absolute', inset: 0 }} onClick={props.onClose} />
 
       <div style={{
         position: 'relative', width: '360px', height: '740px', backgroundColor: '#000',
-        border: '12px solid #222', borderRadius: '45px', boxShadow: '0 40px 100px rgba(0,0,0,0.6)',
+        border: isHC ? '12px solid #5f5f5f' : '12px solid #222', borderRadius: '45px', boxShadow: '0 40px 100px rgba(0,0,0,0.6)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden'
       }}>
         
         {/* STATUS BAR */}
-        <div style={{ height: '38px', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 28px', fontSize: '13px', color: '#000', fontWeight: '600' }}>
+        <div style={{ height: '38px', background: colors.statusBg, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 28px', fontSize: '13px', color: colors.statusText, fontWeight: '600' }}>
           <span>{formatTime(currentTime)}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Signal size={15} strokeWidth={2.5} />
@@ -203,12 +214,12 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
         )}
 
         {/* HEADER - Zredukowany padding */}
-        <div style={{ padding: '0px 16px',paddingBottom: '8px', background: '#fff', borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center' }}>
+        <div style={{ padding: '0px 16px',paddingBottom: '8px', background: colors.statusBg, borderBottom: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center' }}>
             <PkoLogoIcon size={30} />
             <span style={{ fontWeight: '900', color: colors.pkoBlue, fontSize: '19px', marginLeft: '6px', letterSpacing: '-0.5px' }}>IKO</span>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', background: colors.bgLight, padding: '12px 16px', paddingBottom: '110px' }}>
+        <div className="iko-scroll-area" style={{ flex: 1, overflowY: 'auto', background: colors.bgLight, padding: '12px 16px', paddingBottom: '110px' }}>
           
           {activeTab === 'bank' && (
             <>
@@ -220,7 +231,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                 </p>
               </div>
 
-              <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: `1px solid ${colors.border}` }}>
+              <div style={{ background: colors.surface, borderRadius: '16px', padding: '16px', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', border: `1px solid ${colors.border}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                   <Landmark size={18} color={colors.pkoBlue} />
                   <span style={{ fontSize: '14px', fontWeight: '800', color: colors.pkoBlue }}>Official Banking Rates</span>
@@ -228,29 +239,29 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                 
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                   {/* Rate - Przyciemniony tekst */}
-                  <div style={{ flex: 1, background: colors.bgLight, padding: '10px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ flex: 1, background: colors.surfaceSoft, padding: '10px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Info size={14} color={colors.pkoBlue} />
                     <div style={{ fontSize: '11px', color: colors.pkoBlue }}>Rate: <strong>4:1</strong></div>
                   </div>
                   {/* Fee - Przyciemniony tekst */}
-                  <div style={{ flex: 1, background: colors.bgLight, padding: '10px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ flex: 1, background: colors.surfaceSoft, padding: '10px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <BatteryCharging size={14} color="#00a3b8" />
                     <div style={{ fontSize: '11px', color: colors.pkoBlue }}>Fee: <strong>{props.tradeEnergyCost}</strong></div>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button style={{ flex: 1, padding: '12px', background: '#f0f2f5', color: colors.pkoBlue, border: 'none', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <button style={{ flex: 1, padding: '12px', background: colors.buttonSecondary, color: colors.buttonText, border: `1px solid ${colors.border}`, borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     <History size={14}/> History
                   </button>
                 </div>
               </div>
 
-              <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ background: colors.surface, borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '10px', fontWeight: '900', color: colors.pkoBlue, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>SELL RESOURCES (X4)</span>
-                    <span style={{ fontSize: '9px', fontWeight: 'normal', color: '#666' }}>Have: {Math.floor((props.playerResources[props.bankSellKind] ?? 0) / 1)}</span>
+                    <span style={{ fontSize: '9px', fontWeight: 'normal', color: colors.inputText }}>Have: {Math.floor((props.playerResources[props.bankSellKind] ?? 0) / 4)}</span>
                   </label>
                   <CustomSelect value={props.bankSellKind} onSelect={props.setBankSellKind} type="sell" />
                 </div>
@@ -289,9 +300,9 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                         style={{ 
                           width: '100%', 
                           padding: '12px', 
-                          background: hasEnoughResources ? colors.pkoBlue : '#ccc', 
-                          color: '#fff', 
-                          border: 'none', 
+                          background: hasEnoughResources ? colors.buttonPrimary : colors.buttonDisabled,
+                          color: colors.buttonText,
+                          border: `1px solid ${colors.border}`,
                           borderRadius: '10px', 
                           fontWeight: 'bold', 
                           fontSize: '13px', 
@@ -320,7 +331,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                 </p>
               </div>
               
-              <button onClick={props.onOpenOffersList} style={{ width: '100%', padding: '14px', background: '#fff', border: `1.5px solid ${colors.pkoBlue}`, color: colors.pkoBlue, borderRadius: '14px', fontWeight: '900', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button onClick={props.onOpenOffersList} style={{ width: '100%', padding: '14px', background: colors.surface, border: `1.5px solid ${colors.border}`, color: colors.pkoBlue, borderRadius: '14px', fontWeight: '900', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <Users size={20}/>
                     <span style={{ fontSize: '13px' }}>BROWSE GLOBAL OFFERS</span>
@@ -328,11 +339,11 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                 <span style={{ background: colors.pkoRed, color: '#fff', padding: '2px 10px', borderRadius: '20px', fontSize: '11px' }}>{props.openTradeOffersCount}</span>
               </button>
 
-              <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}` }}>
+              <div style={{ background: colors.surface, borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}` }}>
                 <div style={{ fontSize: '10px', fontWeight: '900', marginBottom: '16px', textAlign: 'center', color: colors.pkoBlue }}>CREATE NEW LISTING</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 34px 1fr', alignItems: 'center' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ fontSize: '8.5px', fontWeight: '900', color: '#999', textAlign: 'center' }}>YOU GIVE</div>
+                    <div style={{ fontSize: '8.5px', fontWeight: '900', color: colors.inputText, textAlign: 'center' }}>YOU GIVE</div>
                     {RESOURCE_MAP.map(res => (
                       <div key={res.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <res.icon size={15} color={res.color} />
@@ -344,7 +355,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                     <ArrowRight size={20}/>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ fontSize: '8.5px', fontWeight: '900', color: '#999', textAlign: 'center' }}>YOU WANT</div>
+                    <div style={{ fontSize: '8.5px', fontWeight: '900', color: colors.inputText, textAlign: 'center' }}>YOU WANT</div>
                     {RESOURCE_MAP.map(res => (
                       <div key={res.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <res.icon size={15} color={res.color} />
@@ -353,7 +364,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                     ))}
                   </div>
                 </div>
-                <button onClick={props.onBarterCreate} style={{ width: '100%', marginTop: '20px', padding: '14px', background: colors.pkoBlue, color: '#fff', border: 'none', borderRadius: '12px', fontWeight: 'bold' }}>Publish Offer</button>
+                <button onClick={props.onBarterCreate} style={{ width: '100%', marginTop: '20px', padding: '14px', background: colors.buttonPrimary, color: colors.buttonText, border: `1px solid ${colors.border}`, borderRadius: '12px', fontWeight: 'bold' }}>Publish Offer</button>
               </div>
             </>
           )}
@@ -367,9 +378,9 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                 </p>
               </div>
 
-              <div style={{ background: '#fff', borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: '0', height: '85%' }}>
+                <div style={{ background: colors.surface, borderRadius: '16px', padding: '16px', border: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: '0', height: '85%' }}>
                 {/* Messages container */}
-                <div style={{
+                <div className="iko-scroll-area" style={{
                   background: colors.bgLight,
                   borderRadius: '12px',
                   padding: '12px',
@@ -381,7 +392,7 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                   marginBottom: '12px'
                 }}>
                   {props.assistantMessages.length === 0 ? (
-                    <p style={{ fontSize: '11px', color: '#999', margin: 0, textAlign: 'center', paddingTop: '20px' }}>
+                    <p style={{ fontSize: '11px', color: colors.inputText, margin: 0, textAlign: 'center', paddingTop: '20px' }}>
                       Ask about rules or strategy for the current lobby situation.
                     </p>
                   ) : (
@@ -389,9 +400,9 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                       <div 
                         key={`${msg.role}-${idx}`}
                         style={{
-                          color: '#666666',
-                          background: msg.role === 'user' ? '#e8f4f8' : '#eeeded',
-                          borderLeft: `3px solid ${msg.role === 'user' ? '#56f0ff' : '#c0c5c2'}`,
+                          color: colors.inputText,
+                          background: msg.role === 'user' ? colors.surfaceSoft : colors.inputBg,
+                          borderLeft: `3px solid ${msg.role === 'user' ? colors.pkoBlue : colors.border}`,
                           padding: '10px',
                           borderRadius: '8px',
                           fontSize: '11px'
@@ -427,9 +438,9 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
                     disabled={props.assistantSending || !props.assistantPrompt.trim()}
                     style={{
                       padding: '12px',
-                      background: props.assistantSending || !props.assistantPrompt.trim() ? '#ccc' : colors.pkoBlue,
-                      color: '#fff',
-                      border: 'none',
+                      background: props.assistantSending || !props.assistantPrompt.trim() ? colors.buttonDisabled : colors.buttonPrimary,
+                      color: colors.buttonText,
+                      border: `1px solid ${colors.border}`,
                       borderRadius: '10px',
                       fontWeight: 'bold',
                       fontSize: '12px',
@@ -454,25 +465,25 @@ export const IkoPhone: React.FC<IkoPhoneProps> = (props) => {
         {/* NAVIGATION & HOME INDICATOR */}
         <div style={{ 
           position: 'absolute', bottom: 0, width: '100%', height: '95px', 
-          background: '#fff', borderTop: `1px solid ${colors.border}`,
+          background: colors.statusBg, borderTop: `1px solid ${colors.border}`,
           display: 'flex', flexDirection: 'column', alignItems: 'center'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', width: '100%', flex: 1 }}>
-            <NavButton active={activeTab === 'bank'} icon={<Building2 size={24}/>} label="Bank" onClick={() => setActiveTab('bank')} />
-            <NavButton active={activeTab === 'market'} icon={<ShoppingBag size={24}/>} label="Market" onClick={() => setActiveTab('market')} badge={props.openTradeOffersCount} />
-            <NavButton active={activeTab === 'assistant'} icon={<Sparkles size={24}/>} label="AI" onClick={() => setActiveTab('assistant')} />
-            <NavButton active={false} icon={<LogOut size={24}/>} label="Exit" onClick={props.onClose} />
+            <NavButton active={activeTab === 'bank'} icon={<Building2 size={24}/>} label="Bank" onClick={() => setActiveTab('bank')} highContrastEnabled={isHC} />
+            <NavButton active={activeTab === 'market'} icon={<ShoppingBag size={24}/>} label="Market" onClick={() => setActiveTab('market')} badge={props.openTradeOffersCount} highContrastEnabled={isHC} />
+            <NavButton active={activeTab === 'assistant'} icon={<Sparkles size={24}/>} label="AI" onClick={() => setActiveTab('assistant')} highContrastEnabled={isHC} />
+            <NavButton active={false} icon={<LogOut size={24}/>} label="Exit" onClick={props.onClose} highContrastEnabled={isHC} />
           </div>
           
           {/* IPHONE HOME INDICATOR */}
-          <div style={{ width: '120px', height: '5px', background: '#000', borderRadius: '10px', marginBottom: '8px', opacity: 0.8 }} />
+          <div style={{ width: '120px', height: '5px', background: isHC ? '#ffe600' : '#000', borderRadius: '10px', marginBottom: '8px', opacity: 0.8 }} />
         </div>
       </div>
     </div>
   );
 };
 
-const NavButton = ({ active, icon, label, onClick, badge }: any) => {
+const NavButton = ({ active, icon, label, onClick, badge, highContrastEnabled = false }: any) => {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -487,7 +498,9 @@ const NavButton = ({ active, icon, label, onClick, badge }: any) => {
         gap: '4px', 
         cursor: 'pointer', 
         // Kolor zmienia się płynnie na hover, jeśli przycisk nie jest aktywny
-        color: active ? '#002855' : (isHovered ? '#334b6e' : '#6a7077'), 
+        color: highContrastEnabled
+          ? (active ? '#ffe600' : (isHovered ? '#fff066' : '#bfbfbf'))
+          : (active ? '#002855' : (isHovered ? '#334b6e' : '#6a7077')),
         flex: 1, 
         position: 'relative',
         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)', // Płynna animacja
@@ -497,7 +510,9 @@ const NavButton = ({ active, icon, label, onClick, badge }: any) => {
       <div style={{ 
         position: 'relative',
         // Delikatny blask ikony na hover
-        filter: isHovered && !active ? 'drop-shadow(0 0 5px rgba(0, 40, 85, 0.2))' : 'none'
+        filter: isHovered && !active
+          ? (highContrastEnabled ? 'drop-shadow(0 0 5px rgba(255, 230, 0, 0.28))' : 'drop-shadow(0 0 5px rgba(0, 40, 85, 0.2))')
+          : 'none'
       }}>
         {icon}
         {badge > 0 && (
@@ -515,7 +530,7 @@ const NavButton = ({ active, icon, label, onClick, badge }: any) => {
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
-            border: '2px solid #fff',
+            border: highContrastEnabled ? '2px solid #121212' : '2px solid #fff',
             // Powiadomienie może lekko "pulsować" na hover
             transform: isHovered ? 'scale(1.1)' : 'scale(1)',
             transition: 'transform 0.2s ease'

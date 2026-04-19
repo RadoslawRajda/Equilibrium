@@ -6,6 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { wagmiConfig } from "./lib/wallet";
 import "./styles.css";
+import "./highContrast.css";
 
 const queryClient = new QueryClient();
 

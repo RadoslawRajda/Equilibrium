@@ -79,10 +79,7 @@ async function main() {
     "LobbyPaymasterHook",
     "LobbySessionPaymaster",
     "LobbyManager",
-    "Ticket",
-    "Season",
-    "PlayerState",
-    "Structures",
+    "ExperienceStats",
     "Voting",
     "AIGameMaster",
     "ERC8004PlayerAgentRegistry",
@@ -130,6 +127,7 @@ async function main() {
     deployed.LobbySessionPaymaster.address
   );
   const lobbyManager = await ethers.getContractAt("LobbyManager", deployed.LobbyManager.address);
+  const experienceStats = await ethers.getContractAt("ExperienceStats", deployed.ExperienceStats.address);
   const gameCore = await ethers.getContractAt("GameCore", deployed.GameCore.address);
   const voting = await ethers.getContractAt("Voting", deployed.Voting.address);
   const aiGameMaster = await ethers.getContractAt("AIGameMaster", deployed.AIGameMaster.address);
@@ -154,6 +152,8 @@ async function main() {
   await (await gameCore.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
   await (await voting.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
   await (await aiGameMaster.setActorAuthority(deployed.SessionForwarderActorAuthority.address)).wait();
+  await (await experienceStats.setStatsUpdater(deployed.LobbyManager.address)).wait();
+  await (await lobbyManager.setExperienceStatsRegistry(deployed.ExperienceStats.address)).wait();
   await (await erc8004PlayerAgentRegistry.setStatsUpdater(deployed.LobbyManager.address)).wait();
   await (await lobbyManager.setAgentStatsRegistry(deployed.ERC8004PlayerAgentRegistry.address)).wait();
 

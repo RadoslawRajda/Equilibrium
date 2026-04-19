@@ -1,5 +1,16 @@
 require("@nomicfoundation/hardhat-toolbox");
 
+const chainId = Number(process.env.CHAIN_ID || 1337);
+const sharedMnemonic = process.env.ANVIL_MNEMONIC;
+const sharedAccounts = sharedMnemonic
+  ? {
+      mnemonic: sharedMnemonic,
+      path: "m/44'/60'/0'/0/",
+      initialIndex: 0,
+      count: Number(process.env.HARDHAT_ACCOUNT_COUNT || 12)
+    }
+  : undefined;
+
 module.exports = {
   solidity: {
     version: "0.8.28",
@@ -14,28 +25,18 @@ module.exports = {
   },
   networks: {
     hardhat: {
-      chainId: 1337
+      chainId,
+      allowUnlimitedContractSize: true
     },
-    /** Same mnemonic as docker-compose Anvil — use for deploy from the host to http://127.0.0.1:8545 */
     localhost: {
-      url: process.env.GANACHE_RPC_URL || "http://127.0.0.1:8545",
-      chainId: 1337,
-      accounts: {
-        mnemonic: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat",
-        path: "m/44'/60'/0'/0/",
-        initialIndex: 0,
-        count: 12
-      }
+      url: process.env.GANACHE_HOST_RPC_URL || "http://127.0.0.1:8545",
+      chainId,
+      accounts: sharedAccounts
     },
     ganache: {
-      url: process.env.GANACHE_RPC_URL || "http://ganache:8545",
-      chainId: 1337,
-      accounts: {
-        mnemonic: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat",
-        path: "m/44'/60'/0'/0/",
-        initialIndex: 0,
-        count: 12
-      }
+      url: process.env.GANACHE_DOCKER_RPC_URL || "http://ganache:8545",
+      chainId,
+      accounts: sharedAccounts
     }
   }
 };

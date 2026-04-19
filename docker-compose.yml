@@ -23,21 +23,21 @@ services:
       - "8545:8545"
     command:
       - --host
-      - 0.0.0.0
+      - ${ANVIL_HOST:-0.0.0.0}
       - --port
-      - "8545"
+      - "${ANVIL_PORT:-8545}"
       - --mnemonic
-      - "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      - "${ANVIL_MNEMONIC}"
       - --chain-id
-      - "1337"
+      - "${CHAIN_ID:-1337}"
       - --accounts
-      - "16"
+      - "${ANVIL_ACCOUNTS:-16}"
       - --balance
-      - "1000"
+      - "${ANVIL_BALANCE:-1000}"
       - --block-time
-      - "1"
+      - "${ANVIL_BLOCK_TIME:-1}"
       - --hardfork
-      - Cancun
+      - ${ANVIL_HARDFORK:-Cancun}
       - --steps-tracing
 
   hardhat:
@@ -73,17 +73,19 @@ services:
         done
         node src/esm/cli/alto.js run \
           --entrypoints "$$EP" \
-          --executor-private-keys "${BUNDLER_EXECUTOR_KEY:-0xc87509a1c067bbde78beb793e6fa76530b6382a4c0241e5e4a9ec0a0f44dc0d3}" \
-          --utility-private-key "${BUNDLER_UTILITY_KEY:-0xae6ae8e5ccbfb04590405997ee2d52d2b330726137b875053c36d94e974d162f}" \
-          --rpc-url http://ganache:8545 \
-          --network-name ganache \
-          --host 0.0.0.0 \
-          --port 4337 \
-          --min-balance 0 \
-          --safe-mode false
+          --executor-private-keys "${BUNDLER_EXECUTOR_KEY}" \
+          --utility-private-key "${BUNDLER_UTILITY_KEY}" \
+          --rpc-url ${GANACHE_DOCKER_RPC_URL:-http://ganache:8545} \
+          --network-name ${BUNDLER_NETWORK_NAME:-ganache} \
+          --host ${BUNDLER_HOST:-0.0.0.0} \
+          --port ${BUNDLER_PORT:-4337} \
+          --metrics-port ${BUNDLER_METRICS_PORT:-4338} \
+          --min-balance ${BUNDLER_MIN_BALANCE:-0} \
+          --safe-mode ${BUNDLER_SAFE_MODE:-false}
     restart: on-failure
     ports:
       - "4337:4337"
+      - "4338:4338"
     volumes:
       - ./contracts/deployments:/contracts/deployments:ro
     depends_on:
@@ -99,54 +101,58 @@ services:
   equinox-agent:
     <<: *player-runtime
     environment:
-      RPC_URL: http://ganache:8545
-      OLLAMA_URL: http://host.docker.internal:11434
+      RPC_URL: ${GANACHE_DOCKER_RPC_URL:-http://ganache:8545}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
-      AGENT_ACCOUNT_INDEX: "10"
-      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      AGENT_ACCOUNT_INDEX: "${EQUINOX_AGENT_ACCOUNT_INDEX:-10}"
+      MNEMONIC: ${ANVIL_MNEMONIC}
       DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
-      POLL_MS: "8000"
+      POLL_MS: "${EQUINOX_POLL_MS:-8000}"
       AGENT_NAME: Equinox
       PLAYER_IDENTITY_PATH: personas/equinox.md
+      METRICS_PORT: "${PLAYER_METRICS_PORT:-9100}"
 
   aurora-agent:
     <<: *player-runtime
     environment:
-      RPC_URL: http://ganache:8545
-      OLLAMA_URL: http://host.docker.internal:11434
+      RPC_URL: ${GANACHE_DOCKER_RPC_URL:-http://ganache:8545}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
-      AGENT_ACCOUNT_INDEX: "11"
-      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      AGENT_ACCOUNT_INDEX: "${AURORA_AGENT_ACCOUNT_INDEX:-11}"
+      MNEMONIC: ${ANVIL_MNEMONIC}
       DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
-      POLL_MS: "8200"
+      POLL_MS: "${AURORA_POLL_MS:-8200}"
       AGENT_NAME: Aurora
       PLAYER_IDENTITY_PATH: personas/aurora.md
+      METRICS_PORT: "${PLAYER_METRICS_PORT:-9100}"
 
   crucible-agent:
     <<: *player-runtime
     environment:
-      RPC_URL: http://ganache:8545
-      OLLAMA_URL: http://host.docker.internal:11434
+      RPC_URL: ${GANACHE_DOCKER_RPC_URL:-http://ganache:8545}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
-      AGENT_ACCOUNT_INDEX: "12"
-      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      AGENT_ACCOUNT_INDEX: "${CRUCIBLE_AGENT_ACCOUNT_INDEX:-12}"
+      MNEMONIC: ${ANVIL_MNEMONIC}
       DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
-      POLL_MS: "8400"
+      POLL_MS: "${CRUCIBLE_POLL_MS:-8400}"
       AGENT_NAME: Crucible
       PLAYER_IDENTITY_PATH: personas/crucible.md
+      METRICS_PORT: "${PLAYER_METRICS_PORT:-9100}"
 
   drift-agent:
     <<: *player-runtime
     environment:
-      RPC_URL: http://ganache:8545
-      OLLAMA_URL: http://host.docker.internal:11434
+      RPC_URL: ${GANACHE_DOCKER_RPC_URL:-http://ganache:8545}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
-      AGENT_ACCOUNT_INDEX: "13"
-      MNEMONIC: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      AGENT_ACCOUNT_INDEX: "${DRIFT_AGENT_ACCOUNT_INDEX:-13}"
+      MNEMONIC: ${ANVIL_MNEMONIC}
       DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
-      POLL_MS: "8600"
+      POLL_MS: "${DRIFT_POLL_MS:-8600}"
       AGENT_NAME: Drift
       PLAYER_IDENTITY_PATH: personas/drift.md
+      METRICS_PORT: "${PLAYER_METRICS_PORT:-9100}"
 
   assistant-agent:
     image: cryptocatan/assistant-agent:local
@@ -154,11 +160,11 @@ services:
     ports:
       - "4060:4060"
     environment:
-      PORT: "4060"
-      RPC_URL: http://ganache:8545
+      PORT: "${ASSISTANT_PORT:-4060}"
+      RPC_URL: ${GANACHE_DOCKER_RPC_URL:-http://ganache:8545}
       DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
-      CONTEXT_TIMEOUT_MS: "6000"
-      OLLAMA_URL: http://host.docker.internal:11434
+      CONTEXT_TIMEOUT_MS: "${ASSISTANT_CONTEXT_TIMEOUT_MS:-6000}"
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
       ASSISTANT_OLLAMA_URL: ${ASSISTANT_OLLAMA_URL:-http://host.docker.internal:11434}
       ASSISTANT_OLLAMA_MODEL: ${ASSISTANT_OLLAMA_MODEL:-llama3.2}
@@ -172,6 +178,59 @@ services:
       hardhat:
         condition: service_started
 
+  # --------------------------------------------------------------------------
+  # Monitoring stack (Prometheus + Grafana + on-chain exporter)
+  # --------------------------------------------------------------------------
+  chain-exporter:
+    build: ./monitoring/chain-exporter
+    environment:
+      RPC_URL: ${GANACHE_DOCKER_RPC_URL:-http://ganache:8545}
+      DEPLOYMENTS_PATH: /contracts/deployments/localhost.json
+      POLL_MS: "${CHAIN_EXPORTER_POLL_MS:-10000}"
+      MNEMONIC: ${ANVIL_MNEMONIC}
+      BUNDLER_RPC_URL: ${BUNDLER_RPC_URL:-http://paymaster:4337}
+      BUNDLER_EXECUTOR_KEY: ${BUNDLER_EXECUTOR_KEY}
+      BUNDLER_UTILITY_KEY: ${BUNDLER_UTILITY_KEY}
+    volumes:
+      - ./contracts/deployments:/contracts/deployments:ro
+    depends_on:
+      - ganache
+      - hardhat
+      - paymaster
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - chain-exporter
+      - assistant-agent
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+
+  # Slither static-analysis audit — run with: docker compose --profile audit run --rm slither
+  slither:
+    image: trailofbits/eth-security-toolbox:latest
+    volumes:
+      - ./contracts:/contracts
+    working_dir: /contracts
+    entrypoint: ["/bin/sh", "-c"]
+    command: "npm install --silent 2>&1 | tail -3 && slither . --config-file slither.config.json"
+    profiles: ["audit"]
+
   frontend:
     image: node:20-alpine
     working_dir: /app
@@ -179,11 +238,11 @@ services:
       - ./frontend:/app
       - ./contracts/deployments:/contracts/deployments:ro
     environment:
-      - VITE_CHAIN_ID=1337
-      - VITE_RPC_URL=http://localhost:8545
-      - VITE_BUNDLER_URL=/bundler
-      - VITE_ASSISTANT_API_URL=http://localhost:4060
-      - VITE_WALLETCONNECT_PROJECT_ID=demo-project-id
+      - VITE_CHAIN_ID=${CHAIN_ID:-1337}
+      - VITE_RPC_URL=${GANACHE_HOST_RPC_URL:-http://localhost:8545}
+      - VITE_BUNDLER_URL=${VITE_BUNDLER_URL:-/bundler}
+      - VITE_ASSISTANT_API_URL=${VITE_ASSISTANT_API_URL:-http://localhost:4060}
+      - VITE_WALLETCONNECT_PROJECT_ID=${VITE_WALLETCONNECT_PROJECT_ID:-demo-project-id}
     ports:
       - "3000:3000"
     command: >

@@ -1,0 +1,7 @@
+{
+  "filter_paths": "node_modules,test,contracts/test",
+  "exclude_informational": false,
+  "exclude_low": false,
+  "checklist": true,
+  "compile_force_framework": "hardhat"
+}

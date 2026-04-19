@@ -22,7 +22,7 @@ const USER_PREFIX =
   "Trust economyHints costs. Do NOT summarize the snapshot. No markdown.\n\n=== SNAPSHOT ===\n";
 
 const STARTING_HEX_USER_PREFIX =
-  "CRITICAL: ZERO ROUND — choose your starting hex on CryptoCatan. " +
+  "CRITICAL: ZERO ROUND — choose your starting hex on Equilibrium. " +
   "Output ONLY one JSON object; first non-whitespace character MUST be `{`. " +
   'Shape: {"thought":"one sentence why this hex fits your strategy","hexId":"q,r"}. ' +
   "hexId MUST exactly match one of candidateHexes[].id (same string, e.g. \"0,0\" or \"-2,1\"). " +
@@ -81,7 +81,7 @@ function defaultPersona(): string {
 
   if (!strategy) {
     strategy = [
-      "CryptoCatan agent: reply with one JSON object { thought, actions }.",
+      "Equilibrium agent: reply with one JSON object { thought, actions }.",
       "Prompt cap: keep each basic (food wood stone ore) under ~100 — if one is >=100 stop collecting that line; trade/bank/craft/expand instead.",
       "Default spec: 5 alloy win, 10 each per craft ⇒ 50/50/50/50 can finish in one batch of craftAlloy if hints allow; trust economyHints over fixed numbers.",
       "Balance basics via discover/build/upgrade and trade/bank; do not only collect.",

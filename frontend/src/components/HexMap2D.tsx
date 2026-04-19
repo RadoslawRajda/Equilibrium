@@ -11,6 +11,7 @@ type Props = {
   myAddress?: string;
   selectedHex?: string;
   earthquakeTargets?: string[];
+  highContrastEnabled?: boolean;
   onHexClick: (hexId: string) => void;
   onBackgroundClick?: () => void;
   contextMenuActions?: HexContextMenuActions;

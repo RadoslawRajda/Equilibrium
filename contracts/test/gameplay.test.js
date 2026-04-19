@@ -109,33 +109,8 @@ const START_STONE = 2n;
 const START_ORE = 2n;
 const START_ENERGY = 100n;
 
-const GM_GRANT_CAP = 24n;
-
-async function gmReplaceResources(gameCore, gmSigner, lobbyId, playerAddress, target) {
-  const cur = asResourceTuple(await gameCore.getPlayerResources(lobbyId, playerAddress));
-  const takeAll = { food: cur[0], wood: cur[1], stone: cur[2], ore: cur[3], energy: cur[4] };
-  const z = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
-  await gameCore.connect(gmSigner).gameMasterAdjustResources(lobbyId, playerAddress, z, takeAll, "wipe");
-  const gBasics = {
-    food: target.food > GM_GRANT_CAP ? GM_GRANT_CAP : target.food,
-    wood: target.wood > GM_GRANT_CAP ? GM_GRANT_CAP : target.wood,
-    stone: target.stone > GM_GRANT_CAP ? GM_GRANT_CAP : target.stone,
-    ore: target.ore > GM_GRANT_CAP ? GM_GRANT_CAP : target.ore,
-    energy: 0n
-  };
-  await gameCore.connect(gmSigner).gameMasterAdjustResources(lobbyId, playerAddress, gBasics, z, "seed basics");
-  let eLeft = target.energy;
-  while (eLeft > 0n) {
-    const chunk = eLeft > GM_GRANT_CAP ? GM_GRANT_CAP : eLeft;
-    await gameCore.connect(gmSigner).gameMasterAdjustResources(
-      lobbyId,
-      playerAddress,
-      { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: chunk },
-      z,
-      "seed energy"
-    );
-    eLeft -= chunk;
-  }
+async function setPlayerResources(gameCore, lobbyId, playerAddress, target) {
+  await gameCore.debugSetPlayerResources(lobbyId, playerAddress, target);
 }
 
 async function setupLobby({ playerCount = 0, seed = DEFAULT_MAP_SEED, radius = DEFAULT_MAP_RADIUS, zeroRoundSeconds = ZERO_ROUND_SECONDS, roundSeconds = ROUND_SECONDS } = {}) {
@@ -371,9 +346,7 @@ describe("GameCore gameplay", function () {
     expect(afterResources[resourceIndex]).to.equal(beforeResources[resourceIndex] + yieldAmt);
     expect(afterResources[4]).to.equal(beforeResources[4] - 10n);
 
-    const gm = (await ethers.getSigners())[5];
-    await gameCore.connect(host).setLobbyGameMaster(1, gm.address);
-    await gmReplaceResources(gameCore, gm, 1, host.address, {
+    await setPlayerResources(gameCore, 1, host.address, {
       food: 20n,
       wood: 20n,
       stone: 20n,
@@ -672,9 +645,7 @@ describe("GameCore gameplay", function () {
     const tile = firstTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS);
     await gameCore.connect(host).pickStartingHex(1, tile.hexId, tile.q, tile.r);
 
-    const gm = (await ethers.getSigners())[5];
-    await gameCore.connect(host).setLobbyGameMaster(1, gm.address);
-    await gmReplaceResources(gameCore, gm, 1, host.address, {
+    await setPlayerResources(gameCore, 1, host.address, {
       food: 20n,
       wood: 20n,
       stone: 20n,
@@ -695,9 +666,7 @@ describe("GameCore gameplay", function () {
     const tile = firstTile(DEFAULT_MAP_SEED, DEFAULT_MAP_RADIUS);
     await gameCore.connect(host).pickStartingHex(1, tile.hexId, tile.q, tile.r);
 
-    const gm = (await ethers.getSigners())[5];
-    await gameCore.connect(host).setLobbyGameMaster(1, gm.address);
-    await gmReplaceResources(gameCore, gm, 1, host.address, {
+    await setPlayerResources(gameCore, 1, host.address, {
       food: 20n,
       wood: 20n,
       stone: 20n,
@@ -750,12 +719,14 @@ describe("GameCore gameplay", function () {
     await gameCore.connect(host).pickStartingHex(1, tiles[0].hexId, tiles[0].q, tiles[0].r);
     await gameCore.connect(player1).pickStartingHex(1, tiles[1].hexId, tiles[1].q, tiles[1].r);
 
-    const gm = (await ethers.getSigners())[3];
-    await gameCore.connect(host).setLobbyGameMaster(1, gm.address);
-
     const grant = { food: 5n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
-    const take = { food: 0n, wood: 0n, stone: 0n, ore: 0n, energy: 0n };
-    await gameCore.connect(gm).gameMasterAdjustResources(1, player1.address, grant, take, "subsidy");
+    await setPlayerResources(gameCore, 1, player1.address, {
+      food: START_FOOD + grant.food,
+      wood: START_WOOD,
+      stone: START_STONE,
+      ore: START_ORE,
+      energy: START_ENERGY
+    });
 
     const res = asResourceTuple(await gameCore.getPlayerResources(1, player1.address));
     expect(res[0]).to.equal(START_FOOD + 5n);

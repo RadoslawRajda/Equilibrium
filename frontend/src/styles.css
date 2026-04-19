@@ -80,6 +80,49 @@ select {
   font-family: "Sora", sans-serif;
 }
 
+.high-contrast-fab {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 120;
+  min-height: 44px;
+  padding: 0.62rem 0.9rem;
+  border-radius: 12px;
+  border: 2px solid rgba(86, 240, 255, 0.55);
+  background: linear-gradient(145deg, rgba(14, 26, 69, 0.96), rgba(21, 37, 92, 0.95));
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  box-shadow:
+    0 8px 20px rgba(2, 8, 28, 0.45),
+    0 0 0 1px rgba(86, 240, 255, 0.14) inset;
+}
+
+.high-contrast-fab:hover {
+  transform: translateY(-1px);
+}
+
+.high-contrast-fab.is-active {
+  border-color: rgba(255, 211, 105, 0.75);
+  background: linear-gradient(145deg, rgba(33, 22, 6, 0.98), rgba(69, 45, 10, 0.95));
+}
+
+.high-contrast-fab:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .high-contrast-fab {
+    right: 1rem;
+    bottom: 1rem;
+    width: calc(100% - 2rem);
+    justify-content: center;
+  }
+}
+
 select {
   border-radius: 10px;
   border: 1px solid rgba(130, 160, 255, 0.4);
@@ -159,6 +202,63 @@ select option {
   margin: 0;
   color: var(--muted);
   font-size: 1.1rem;
+}
+
+/* Policy / contact tiles */
+.policy-tiles {
+  display: flex;
+  gap: 10px;
+}
+
+.policy-tiles__tile {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: rgba(13, 21, 56, 0.72);
+  border: 1px solid rgba(130, 160, 255, 0.35);
+  text-decoration: none;
+  color: inherit;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.policy-tiles__tile:hover {
+  transform: translateY(-1px);
+  background: rgba(20, 32, 72, 0.85);
+  border-color: rgba(86, 240, 255, 0.45);
+  box-shadow: 0 8px 20px rgba(2, 8, 28, 0.35);
+}
+
+.policy-tiles__icon {
+  display: block;
+  color: rgba(223, 232, 255, 0.92);
+}
+
+.policy-tiles__label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  opacity: 0.92;
+}
+
+/* Main page placement: bottom-left corner */
+.policy-tiles--floating.policy-tiles--main-corner {
+  position: fixed;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 110;
+}
+
+@media (max-width: 900px) {
+  .policy-tiles--floating.policy-tiles--main-corner {
+    left: 1rem;
+    bottom: 1rem;
+    flex-direction: column;
+  }
 }
 
 .connect-buttons,
@@ -331,6 +431,96 @@ button.lobby-room-cancel-secondary:hover {
   padding: 1.2rem 1rem;
   border-bottom: 1px solid rgba(130, 160, 255, 0.2);
   gap: 1.2rem;
+}
+
+.leaderboard-actions {
+  justify-content: center;
+}
+
+.leaderboard-note {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.leaderboard-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(130, 160, 255, 0.16);
+}
+
+.leaderboard-toolbar h2 {
+  margin: 0;
+}
+
+.leaderboard-count {
+  margin: 0;
+}
+
+.leaderboard-empty {
+  margin-top: 0.8rem;
+  padding: 0.95rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(130, 160, 255, 0.24);
+  background: rgba(10, 17, 44, 0.55);
+}
+
+.leaderboard-empty-title {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin-bottom: 0.32rem;
+}
+
+.leaderboard-empty .selected-text {
+  margin: 0;
+}
+
+.leaderboard-table-wrap {
+  margin-top: 0.7rem;
+  overflow-x: auto;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 610px;
+}
+
+.leaderboard-table thead th {
+  text-align: left;
+  font-size: 0.84rem;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid rgba(130, 160, 255, 0.2);
+}
+
+.leaderboard-table tbody td {
+  padding: 0.58rem 0.5rem;
+  border-bottom: 1px solid rgba(130, 160, 255, 0.12);
+  font-size: 0.93rem;
+}
+
+.leaderboard-table thead th:nth-child(n + 3),
+.leaderboard-table tbody td:nth-child(n + 3) {
+  text-align: right;
+}
+
+@media (max-width: 740px) {
+  .leaderboard-actions {
+    justify-content: center;
+  }
+
+  .leaderboard-note {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .lobby-card > div {

@@ -7,4 +7,5 @@ COPY personas ./personas
 COPY skills ./skills
 COPY src ./src
 RUN npx tsc
+EXPOSE 9100
 CMD ["sh", "-lc", "DEP=\"${DEPLOYMENTS_PATH:-/contracts/deployments/localhost.json}\"; until [ -f \"$DEP\" ]; do echo \"[player-agent] waiting for deployments at $DEP\"; sleep 2; done; node dist/index.js"]
