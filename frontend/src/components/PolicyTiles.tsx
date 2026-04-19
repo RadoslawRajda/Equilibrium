@@ -10,7 +10,7 @@ export function PolicyTiles({ variant = "inline", className }: Props) {
     <div className={`policy-tiles policy-tiles--${variant}${className ? ` ${className}` : ""}`}>
       <a
         className="policy-tiles__tile"
-        href="/Terms_and_Conditions.pdf"
+        href="/documents/Terms_and_Conditions.pdf"
         target="_blank"
         rel="noreferrer"
         aria-label="Terms and Conditions"
@@ -21,7 +21,7 @@ export function PolicyTiles({ variant = "inline", className }: Props) {
       </a>
       <a
         className="policy-tiles__tile"
-        href="/Privacy_Policy.pdf"
+        href="/documents/Privacy_Policy.pdf"
         target="_blank"
         rel="noreferrer"
         aria-label="Privacy Policy"

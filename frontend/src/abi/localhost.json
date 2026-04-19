@@ -1,6 +1,6 @@
 {
   "chainId": 1337,
-  "deployedAt": "2026-04-18T22:05:10.165Z",
+  "deployedAt": "2026-04-18T14:57:52.973Z",
   "deployer": "0x627306090abaB3A6e1400e9345bC60c78a8BEf57",
   "contracts": {
     "EntryPoint": {
@@ -2541,25 +2541,6 @@
           "inputs": [
             {
               "indexed": true,
-              "internalType": "address",
-              "name": "previousRegistry",
-              "type": "address"
-            },
-            {
-              "indexed": true,
-              "internalType": "address",
-              "name": "newRegistry",
-              "type": "address"
-            }
-          ],
-          "name": "ExperienceStatsRegistryUpdated",
-          "type": "event"
-        },
-        {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
               "internalType": "uint256",
               "name": "lobbyId",
               "type": "uint256"
@@ -3175,19 +3156,6 @@
         },
         {
           "inputs": [],
-          "name": "experienceStatsRegistry",
-          "outputs": [
-            {
-              "internalType": "address",
-              "name": "",
-              "type": "address"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [],
           "name": "gameCore",
           "outputs": [
             {
@@ -3658,19 +3626,6 @@
           "inputs": [
             {
               "internalType": "address",
-              "name": "newRegistry",
-              "type": "address"
-            }
-          ],
-          "name": "setExperienceStatsRegistry",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "address",
               "name": "_gameCore",
               "type": "address"
             }
@@ -3722,19 +3677,6 @@
         {
           "inputs": [
             {
-              "internalType": "uint256",
-              "name": "_lobbyId",
-              "type": "uint256"
-            }
-          ],
-          "name": "syncConcedeExitPenalty",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
               "internalType": "address",
               "name": "newOwner",
               "type": "address"
@@ -3754,13 +3696,137 @@
         }
       ]
     },
-    "ExperienceStats": {
+    "Ticket": {
       "address": "0xFB88dE099e13c3ED21F80a7a1E49f8CAEcF10df6",
       "abi": [
         {
           "inputs": [],
           "stateMutability": "nonpayable",
           "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            }
+          ],
+          "name": "ERC721IncorrectOwner",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "ERC721InsufficientApproval",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "approver",
+              "type": "address"
+            }
+          ],
+          "name": "ERC721InvalidApprover",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
+            }
+          ],
+          "name": "ERC721InvalidOperator",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            }
+          ],
+          "name": "ERC721InvalidOwner",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "receiver",
+              "type": "address"
+            }
+          ],
+          "name": "ERC721InvalidReceiver",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
+            }
+          ],
+          "name": "ERC721InvalidSender",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "ERC721NonexistentToken",
+          "type": "error"
+        },
+        {
+          "inputs": [],
+          "name": "FailedCall",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "balance",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "needed",
+              "type": "uint256"
+            }
+          ],
+          "name": "InsufficientBalance",
+          "type": "error"
         },
         {
           "inputs": [
@@ -3789,36 +3855,68 @@
           "inputs": [
             {
               "indexed": true,
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
+              "internalType": "address",
+              "name": "previousAuthority",
+              "type": "address"
             },
             {
               "indexed": true,
               "internalType": "address",
-              "name": "player",
+              "name": "newAuthority",
+              "type": "address"
+            }
+          ],
+          "name": "ActorAuthorityUpdated",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "approved",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "Approval",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "operator",
               "type": "address"
             },
             {
               "indexed": false,
               "internalType": "bool",
-              "name": "won",
+              "name": "approved",
               "type": "bool"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "pointsAdded",
-              "type": "uint256"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "totalPoints",
-              "type": "uint256"
             }
           ],
-          "name": "LobbyExperienceRecorded",
+          "name": "ApprovalForAll",
           "type": "event"
         },
         {
@@ -3864,30 +3962,18 @@
           "inputs": [
             {
               "indexed": true,
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "indexed": true,
               "internalType": "address",
-              "name": "player",
+              "name": "buyer",
               "type": "address"
             },
             {
               "indexed": false,
               "internalType": "uint256",
-              "name": "penalty",
-              "type": "uint256"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "totalPoints",
+              "name": "tokenId",
               "type": "uint256"
             }
           ],
-          "name": "PlayerExitPenalized",
+          "name": "TicketBought",
           "type": "event"
         },
         {
@@ -3896,55 +3982,37 @@
             {
               "indexed": true,
               "internalType": "address",
-              "name": "player",
+              "name": "from",
               "type": "address"
             },
             {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "experiencePoints",
-              "type": "uint256"
+              "indexed": true,
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
             },
             {
-              "indexed": false,
+              "indexed": true,
               "internalType": "uint256",
-              "name": "gamesPlayed",
-              "type": "uint256"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "gamesWon",
-              "type": "uint256"
-            },
-            {
-              "indexed": false,
-              "internalType": "uint256",
-              "name": "gamesLeft",
+              "name": "tokenId",
               "type": "uint256"
             }
           ],
-          "name": "PlayerExperienceUpdated",
+          "name": "Transfer",
           "type": "event"
         },
         {
-          "anonymous": false,
-          "inputs": [
+          "inputs": [],
+          "name": "TICKET_PRICE",
+          "outputs": [
             {
-              "indexed": true,
-              "internalType": "address",
-              "name": "previousUpdater",
-              "type": "address"
-            },
-            {
-              "indexed": true,
-              "internalType": "address",
-              "name": "newUpdater",
-              "type": "address"
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
             }
           ],
-          "name": "StatsUpdaterUpdated",
-          "type": "event"
+          "stateMutability": "view",
+          "type": "function"
         },
         {
           "inputs": [],
@@ -3954,19 +4022,50 @@
           "type": "function"
         },
         {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "index",
-              "type": "uint256"
-            }
-          ],
-          "name": "getPlayerAt",
+          "inputs": [],
+          "name": "actorAuthority",
           "outputs": [
             {
               "internalType": "address",
               "name": "",
               "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "approve",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            }
+          ],
+          "name": "balanceOf",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
             }
           ],
           "stateMutability": "view",
@@ -3974,97 +4073,39 @@
         },
         {
           "inputs": [],
-          "name": "getPlayerCount",
-          "outputs": [
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "stateMutability": "view",
+          "name": "buyTicket",
+          "outputs": [],
+          "stateMutability": "payable",
           "type": "function"
         },
         {
           "inputs": [
             {
               "internalType": "uint256",
-              "name": "offset",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "max",
+              "name": "tokenId",
               "type": "uint256"
             }
           ],
-          "name": "listPlayers",
+          "name": "getApproved",
           "outputs": [
-            {
-              "components": [
-                {
-                  "internalType": "address",
-                  "name": "player",
-                  "type": "address"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "experiencePoints",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "gamesPlayed",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "gamesWon",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "gamesLeft",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "lastLobbyId",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "uint256",
-                  "name": "firstSeenAt",
-                  "type": "uint256"
-                },
-                {
-                  "internalType": "bool",
-                  "name": "active",
-                  "type": "bool"
-                }
-              ],
-              "internalType": "struct ExperienceStats.ListedPlayerStats[]",
-              "name": "",
-              "type": "tuple[]"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            },
             {
               "internalType": "address",
               "name": "",
               "type": "address"
             }
           ],
-          "name": "lobbyExitRecorded",
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "hasTicket",
           "outputs": [
             {
               "internalType": "bool",
@@ -4078,17 +4119,35 @@
         {
           "inputs": [
             {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
             }
           ],
-          "name": "lobbyResultRecorded",
+          "name": "isApprovedForAll",
           "outputs": [
             {
               "internalType": "bool",
               "name": "",
               "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "name",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
             }
           ],
           "stateMutability": "view",
@@ -4097,6 +4156,25 @@
         {
           "inputs": [],
           "name": "owner",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "ownerOf",
           "outputs": [
             {
               "internalType": "address",
@@ -4121,137 +4199,6 @@
           "type": "function"
         },
         {
-          "inputs": [
-            {
-              "internalType": "address",
-              "name": "",
-              "type": "address"
-            }
-          ],
-          "name": "playerStats",
-          "outputs": [
-            {
-              "internalType": "uint256",
-              "name": "experiencePoints",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "gamesPlayed",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "gamesWon",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "gamesLeft",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "lastLobbyId",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "firstSeenAt",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bool",
-              "name": "active",
-              "type": "bool"
-            }
-          ],
-          "stateMutability": "view",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "internalType": "address[]",
-              "name": "players",
-              "type": "address[]"
-            },
-            {
-              "internalType": "address",
-              "name": "winner",
-              "type": "address"
-            }
-          ],
-          "name": "recordGameResult",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "internalType": "address",
-              "name": "player",
-              "type": "address"
-            }
-          ],
-          "name": "recordLobbyExit",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "internalType": "address[]",
-              "name": "players",
-              "type": "address[]"
-            }
-          ],
-          "name": "recordLobbyExits",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
-          "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "lobbyId",
-              "type": "uint256"
-            },
-            {
-              "internalType": "address[]",
-              "name": "players",
-              "type": "address[]"
-            },
-            {
-              "internalType": "address",
-              "name": "winner",
-              "type": "address"
-            }
-          ],
-          "name": "recordLobbyResult",
-          "outputs": [],
-          "stateMutability": "nonpayable",
-          "type": "function"
-        },
-        {
           "inputs": [],
           "name": "renounceOwnership",
           "outputs": [],
@@ -4262,23 +4209,335 @@
           "inputs": [
             {
               "internalType": "address",
-              "name": "newUpdater",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "safeTransferFrom",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes",
+              "name": "data",
+              "type": "bytes"
+            }
+          ],
+          "name": "safeTransferFrom",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "newAuthority",
               "type": "address"
             }
           ],
-          "name": "setStatsUpdater",
+          "name": "setActorAuthority",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
+            },
+            {
+              "internalType": "bool",
+              "name": "approved",
+              "type": "bool"
+            }
+          ],
+          "name": "setApprovalForAll",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "bytes4",
+              "name": "interfaceId",
+              "type": "bytes4"
+            }
+          ],
+          "name": "supportsInterface",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "symbol",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "tokenURI",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "tokenId",
+              "type": "uint256"
+            }
+          ],
+          "name": "transferFrom",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "transferOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address payable",
+              "name": "to",
+              "type": "address"
+            }
+          ],
+          "name": "withdraw",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        }
+      ]
+    },
+    "Season": {
+      "address": "0xAa588d3737B611baFD7bD713445b314BD453a5C8",
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableInvalidOwner",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "account",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableUnauthorizedAccount",
+          "type": "error"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "seasonId",
+              "type": "uint256"
+            }
+          ],
+          "name": "NewSeason",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "previousOwner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnershipTransferred",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "seasonId",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "startedAt",
+              "type": "uint256"
+            }
+          ],
+          "name": "SeasonStarted",
+          "type": "event"
+        },
+        {
+          "inputs": [],
+          "name": "currentSeason",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "nextSeason",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
         },
         {
           "inputs": [],
-          "name": "statsUpdater",
+          "name": "owner",
           "outputs": [
             {
               "internalType": "address",
               "name": "",
               "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "renounceOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "startSeason",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "started",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "startedAt",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
             }
           ],
           "stateMutability": "view",
@@ -4299,8 +4558,487 @@
         }
       ]
     },
+    "PlayerState": {
+      "address": "0xf204a4Ef082f5c04bB89F7D5E6568B796096735a",
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableInvalidOwner",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "account",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableUnauthorizedAccount",
+          "type": "error"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "previousOwner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnershipTransferred",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            }
+          ],
+          "name": "PlayerInitialized",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "food",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "wood",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "stone",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "ore",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "energy",
+              "type": "uint256"
+            }
+          ],
+          "name": "ResourcesUpdated",
+          "type": "event"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            }
+          ],
+          "name": "initPlayer",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "initialized",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "owner",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "playerResources",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "food",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "wood",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "stone",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "ore",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "energy",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "renounceOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "food",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "wood",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "stone",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "ore",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "energy",
+              "type": "uint256"
+            }
+          ],
+          "name": "setResources",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "transferOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        }
+      ]
+    },
+    "Structures": {
+      "address": "0x75c35C980C0d37ef46DF04d31A140b65503c0eEd",
+      "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableInvalidOwner",
+          "type": "error"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "account",
+              "type": "address"
+            }
+          ],
+          "name": "OwnableUnauthorizedAccount",
+          "type": "error"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "previousOwner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "OwnershipTransferred",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "bytes32",
+              "name": "hexId",
+              "type": "bytes32"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint8",
+              "name": "level",
+              "type": "uint8"
+            },
+            {
+              "indexed": false,
+              "internalType": "enum Structures.Biome",
+              "name": "biome",
+              "type": "uint8"
+            }
+          ],
+          "name": "StructureBuilt",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "bytes32",
+              "name": "hexId",
+              "type": "bytes32"
+            }
+          ],
+          "name": "StructureRemoved",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "bytes32",
+              "name": "hexId",
+              "type": "bytes32"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint8",
+              "name": "level",
+              "type": "uint8"
+            }
+          ],
+          "name": "StructureUpgraded",
+          "type": "event"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "bytes32",
+              "name": "hexId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "structureOwner",
+              "type": "address"
+            },
+            {
+              "internalType": "enum Structures.Biome",
+              "name": "biome",
+              "type": "uint8"
+            }
+          ],
+          "name": "build",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "owner",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "bytes32",
+              "name": "hexId",
+              "type": "bytes32"
+            }
+          ],
+          "name": "remove",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "renounceOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "bytes32",
+              "name": "",
+              "type": "bytes32"
+            }
+          ],
+          "name": "structures",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint8",
+              "name": "level",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bool",
+              "name": "exists",
+              "type": "bool"
+            },
+            {
+              "internalType": "enum Structures.Biome",
+              "name": "biome",
+              "type": "uint8"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "newOwner",
+              "type": "address"
+            }
+          ],
+          "name": "transferOwnership",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "bytes32",
+              "name": "hexId",
+              "type": "bytes32"
+            }
+          ],
+          "name": "upgrade",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        }
+      ]
+    },
     "Voting": {
-      "address": "0xAa588d3737B611baFD7bD713445b314BD453a5C8",
+      "address": "0x82D50AD3C1091866E258Fd0f1a7cC9674609D254",
       "abi": [
         {
           "inputs": [],
@@ -4676,7 +5414,7 @@
       ]
     },
     "AIGameMaster": {
-      "address": "0xf204a4Ef082f5c04bB89F7D5E6568B796096735a",
+      "address": "0xdDA6327139485221633A1FcD65f4aC932E60A2e1",
       "abi": [
         {
           "inputs": [],
@@ -5151,7 +5889,7 @@
       ]
     },
     "ERC8004PlayerAgentRegistry": {
-      "address": "0x75c35C980C0d37ef46DF04d31A140b65503c0eEd",
+      "address": "0xeec918d74c746167564401103096D45BbD494B74",
       "abi": [
         {
           "inputs": [],
@@ -5690,7 +6428,7 @@
       ]
     },
     "MockERC8004Agent": {
-      "address": "0x82D50AD3C1091866E258Fd0f1a7cC9674609D254",
+      "address": "0x0d8cc4b8d15D4c3eF1d70af0071376fb26B5669b",
       "abi": [
         {
           "inputs": [],
@@ -5924,7 +6662,7 @@
       ]
     },
     "ERC8004AIGameMasterAdapter": {
-      "address": "0xdDA6327139485221633A1FcD65f4aC932E60A2e1",
+      "address": "0xEcFcaB0A285d3380E488A39B4BB21e777f8A4EaC",
       "abi": [
         {
           "inputs": [
@@ -6213,7 +6951,7 @@
       ]
     },
     "GameCore": {
-      "address": "0xeec918d74c746167564401103096D45BbD494B74",
+      "address": "0x38cF23C52Bb4B13F051Aec09580a2dE845a7FA35",
       "abi": [
         {
           "inputs": [
@@ -6359,6 +7097,31 @@
             },
             {
               "indexed": false,
+              "internalType": "string",
+              "name": "narrative",
+              "type": "string"
+            }
+          ],
+          "name": "GameMasterAdjusted",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
+            {
+              "indexed": false,
               "internalType": "uint256",
               "name": "newTotal",
               "type": "uint256"
@@ -6446,6 +7209,25 @@
             }
           ],
           "name": "LobbyBootstrapped",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "executor",
+              "type": "address"
+            }
+          ],
+          "name": "LobbyGameMasterSet",
           "type": "event"
         },
         {
@@ -7168,20 +7950,83 @@
               "type": "uint256"
             },
             {
-              "internalType": "address[]",
-              "name": "_players",
-              "type": "address[]"
-            }
-          ],
-          "name": "getAliveStatus",
-          "outputs": [
+              "internalType": "address",
+              "name": "player",
+              "type": "address"
+            },
             {
-              "internalType": "bool[]",
-              "name": "",
-              "type": "bool[]"
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "food",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "wood",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stone",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "ore",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "energy",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct GameCore.Resources",
+              "name": "grant",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "uint256",
+                  "name": "food",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "wood",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "stone",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "ore",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "energy",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct GameCore.Resources",
+              "name": "take",
+              "type": "tuple"
+            },
+            {
+              "internalType": "string",
+              "name": "narrative",
+              "type": "string"
             }
           ],
-          "stateMutability": "view",
+          "name": "gameMasterAdjustResources",
+          "outputs": [],
+          "stateMutability": "nonpayable",
           "type": "function"
         },
         {
@@ -7363,6 +8208,25 @@
               "internalType": "uint256",
               "name": "collectedAtRound",
               "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            }
+          ],
+          "name": "getLobbyGameMaster",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
             }
           ],
           "stateMutability": "view",
@@ -8085,6 +8949,24 @@
             }
           ],
           "name": "setActorAuthority",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "uint256",
+              "name": "lobbyId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "executor",
+              "type": "address"
+            }
+          ],
+          "name": "setLobbyGameMaster",
           "outputs": [],
           "stateMutability": "nonpayable",
           "type": "function"
