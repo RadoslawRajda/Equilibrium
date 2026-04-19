@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState, memo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { Bloom, BrightnessContrast, EffectComposer, HueSaturation, SMAA, Vignette } from "@react-three/postprocessing";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -16,6 +16,7 @@ type Props = {
   myAddress?: string;
   selectedHex?: string;
   earthquakeTargets?: string[];
+  highContrastEnabled?: boolean;
   onHexClick: (hexId: string) => void;
   onBackgroundClick?: () => void;
   contextMenuActions?: HexContextMenuActions;
@@ -424,13 +425,26 @@ void main() {
 `;
 
 const SKY_UNIFORMS = {
-  blackTopColor: { value: new Color("#05070d") },
-  darkBlueColor: { value: new Color("#1b2f57") },
-  blueColor: { value: new Color("#3f6fa4") },
-  lightBlueColor: { value: new Color("#668baa") }
-};
+  normal: {
+    blackTopColor: { value: new Color("#05070d") },
+    darkBlueColor: { value: new Color("#1b2f57") },
+    blueColor: { value: new Color("#3f6fa4") },
+    lightBlueColor: { value: new Color("#668baa") }
+  },
+  highContrast: {
+    blackTopColor: { value: new Color("#020202") },
+    darkBlueColor: { value: new Color("#0b0b0b") },
+    blueColor: { value: new Color("#141414") },
+    lightBlueColor: { value: new Color("#1e1e1e") }
+  }
+} as const;
 
-function AtmosphereBackdrop() {
+function AtmosphereBackdrop({ highContrastEnabled = false }: { highContrastEnabled?: boolean }) {
+  const uniforms = useMemo(
+    () => (highContrastEnabled ? SKY_UNIFORMS.highContrast : SKY_UNIFORMS.normal),
+    [highContrastEnabled]
+  );
+
   const dustPositions = useMemo(() => {
     const count = 140;
     const positions = new Float32Array(count * 3);
@@ -452,7 +466,7 @@ function AtmosphereBackdrop() {
         <shaderMaterial
           side={BackSide}
           depthWrite={false}
-          uniforms={SKY_UNIFORMS}
+          uniforms={uniforms}
           vertexShader={SKY_VERTEX_SHADER}
           fragmentShader={SKY_FRAGMENT_SHADER}
         />
@@ -471,6 +485,21 @@ function AtmosphereBackdrop() {
       </points>
     </group>
   );
+}
+
+function SceneBackdrop({ highContrastEnabled = false }: { highContrastEnabled?: boolean }) {
+  const { gl, scene } = useThree();
+
+  useEffect(() => {
+    const backgroundColor = new Color(highContrastEnabled ? "#050505" : "#0c1232");
+    scene.background = backgroundColor;
+    gl.setClearColor(backgroundColor, 1);
+    return () => {
+      scene.background = null;
+    };
+  }, [gl, highContrastEnabled, scene]);
+
+  return null;
 }
 
 function useTextureLibrary(urls: string[]) {
@@ -1007,7 +1036,7 @@ const HexTileMesh = memo(function HexTileMesh({
   );
 });
 
-export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackgroundClick, earthquakeTargets = [], contextMenuActions }: Props) {
+export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackgroundClick, earthquakeTargets = [], contextMenuActions, highContrastEnabled = false }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const quakeSet = useMemo(() => new Set(earthquakeTargets), [earthquakeTargets]);
@@ -1348,7 +1377,8 @@ export function HexMap({ hexes, myAddress, selectedHex, onHexClick, onBackground
         }}
       >
         <RuntimePerfSampler enabled={debugProps} onSample={setRuntimePerf} />
-        <AtmosphereBackdrop />
+        <SceneBackdrop highContrastEnabled={highContrastEnabled} />
+        <AtmosphereBackdrop highContrastEnabled={highContrastEnabled} />
         <ambientLight intensity={0.62} />
         <directionalLight position={[18, 28, 12]} intensity={1.1} />
         <directionalLight position={[-16, 12, -14]} intensity={0.34} />
